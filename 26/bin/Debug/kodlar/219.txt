@@ -1,0 +1,327 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset162 Microsoft Sans Serif;}}
+\viewkind4\uc1\pard\lang1055\f0\fs17\par
+#! /usr/bin/env python\par
+\par
+# JUKEBOX: browse directories full of sampled sound files.\par
+#\par
+# One or more "list windows" display the files and subdirectories of\par
+# the arguments.  Double-clicking on a subdirectory opens a new window\par
+# displaying its contents (and so on recursively).  Double clicking\par
+# on a file plays it as a sound file (assuming it is one).\par
+#\par
+# Playing is asynchronous: the application keeps listening to events\par
+# while the sample is playing, so you can change the volume (gain)\par
+# during playing, cancel playing or start a new sample right away.\par
+#\par
+# The control window displays the current output gain and a primitive\par
+# "stop button" to cancel the current play request.\par
+#\par
+# Sound files must currently be in Dik Winter's compressed Mac format.\par
+# Since decompression is costly, decompressed samples are saved in\par
+# /usr/tmp/@j* until the application is left.  The files are read\par
+# afresh each time, though.\par
+\par
+import audio\par
+import sunaudio\par
+import commands\par
+import getopt\par
+import path\par
+import posix\par
+import rand\par
+import stdwin\par
+from stdwinevents import *\par
+import string\par
+import sys\par
+\par
+from WindowParent import WindowParent\par
+from HVSplit import VSplit\par
+from Buttons import PushButton\par
+from Sliders import ComplexSlider\par
+\par
+# Pathnames\par
+\par
+HOME_BIN_SGI = '/ufs/guido/bin/sgi/'\tab # Directory where macsound2sgi lives\par
+DEF_DB = '/ufs/dik/sounds/Mac/HCOM'\tab # Default directory of sounds\par
+\par
+\par
+# Global variables\par
+\par
+class struct: pass\tab\tab # Class to define featureless structures\par
+\par
+G = struct()\tab\tab\tab # Holds writable global variables\par
+\par
+\par
+# Main program\par
+\par
+def main():\par
+\tab G.synchronous = 0\tab # If set, use synchronous audio.write()\par
+\tab G.debug = 0\tab\tab # If set, print debug messages\par
+\tab G.gain = 75\tab\tab # Output gain\par
+\tab G.rate = 3\tab\tab # Sampling rate\par
+\tab G.busy = 0\tab\tab # Set while asynchronous playing is active\par
+\tab G.windows = []\tab\tab # List of open windows (except control)\par
+\tab G.mode = 'mac'\tab\tab # Macintosh mode\par
+\tab G.tempprefix = '/usr/tmp/@j' + `rand.rand()` + '-'\par
+\tab #\par
+\tab optlist, args = getopt.getopt(sys.argv[1:], 'dg:r:sSa')\par
+\tab for optname, optarg in optlist:\par
+\tab\tab if   optname == '-d':\par
+\tab\tab\tab G.debug = 1\par
+\tab\tab elif optname == '-g':\par
+\tab\tab\tab G.gain = string.atoi(optarg)\par
+\tab\tab\tab if not (0 < G.gain < 256):\par
+\tab\tab\tab\tab raise optarg.error, '-g gain out of range'\par
+\tab\tab elif optname == '-r':\par
+\tab\tab\tab G.rate = string.atoi(optarg)\par
+\tab\tab\tab if not (1 <= G.rate <= 3):\par
+\tab\tab\tab\tab raise optarg.error, '-r rate out of range'\par
+\tab\tab elif optname == '-s':\par
+\tab\tab\tab G.synchronous = 1\par
+\tab\tab elif optname == '-S':\par
+\tab\tab\tab G.mode = 'sgi'\par
+\tab\tab elif optname == '-a':\par
+\tab\tab\tab G.mode = 'sun'\par
+\tab #\par
+\tab if not args:\par
+\tab\tab args = [DEF_DB]\par
+\tab #\par
+\tab G.cw = opencontrolwindow()\par
+\tab for dirname in args:\par
+\tab\tab G.windows.append(openlistwindow(dirname))\par
+\tab #\par
+\tab #\par
+\tab savegain = audio.getoutgain()\par
+\tab try:\par
+\tab\tab # Initialize stdaudio\par
+\tab\tab audio.setoutgain(0)\par
+\tab\tab audio.start_playing('')\par
+\tab\tab dummy = audio.wait_playing()\par
+\tab\tab audio.setoutgain(0)\par
+\tab\tab maineventloop()\par
+\tab finally:\par
+\tab\tab audio.setoutgain(savegain)\par
+\tab\tab audio.done()\par
+\tab\tab clearcache()\par
+\par
+def maineventloop():\par
+\tab mouse_events = WE_MOUSE_DOWN, WE_MOUSE_MOVE, WE_MOUSE_UP\par
+\tab while G.windows:\par
+\tab\tab type, w, detail = event = stdwin.getevent()\par
+\tab\tab if w == G.cw.win:\par
+\tab\tab\tab if type == WE_CLOSE:\par
+\tab\tab\tab\tab return\par
+\tab\tab\tab G.cw.dispatch(event)\par
+\tab\tab else:\par
+\tab\tab\tab if type == WE_DRAW:\par
+\tab\tab\tab\tab w.drawproc(w, detail)\par
+\tab\tab\tab elif type in mouse_events:\par
+\tab\tab\tab\tab w.mouse(w, type, detail)\par
+\tab\tab\tab elif type == WE_CLOSE:\par
+\tab\tab\tab\tab w.close(w)\par
+\tab\tab\tab\tab del w, event\par
+\tab\tab\tab else:\par
+\tab\tab\tab\tab if G.debug: print type, w, detail\par
+\par
+# Control window -- to set gain and cancel play operations in progress\par
+\par
+def opencontrolwindow():\par
+\tab cw = WindowParent().create('Jukebox', (0, 0))\par
+\tab v = VSplit().create(cw)\par
+\tab #\par
+\tab gain = ComplexSlider().define(v)\par
+\tab gain.setminvalmax(0, G.gain, 255)\par
+\tab gain.settexts('  ', '  ')\par
+\tab gain.sethook(gain_setval_hook)\par
+\tab #\par
+\tab stop = PushButton().definetext(v, 'Stop')\par
+\tab stop.hook = stop_hook\par
+\tab #\par
+\tab cw.realize()\par
+\tab return cw\par
+\par
+def gain_setval_hook(self):\par
+\tab G.gain = self.val\par
+\tab if G.busy: audio.setoutgain(G.gain)\par
+\par
+def stop_hook(self):\par
+\tab if G.busy:\par
+\tab\tab audio.setoutgain(0)\par
+\tab\tab dummy = audio.stop_playing()\par
+\tab\tab G.busy = 0\par
+\par
+\par
+# List windows -- to display list of files and subdirectories\par
+\par
+def openlistwindow(dirname):\par
+\tab list = posix.listdir(dirname)\par
+\tab list.sort()\par
+\tab i = 0\par
+\tab while i < len(list):\par
+\tab\tab if list[i] == '.' or list[i] == '..':\par
+\tab\tab\tab del list[i]\par
+\tab\tab else:\par
+\tab\tab\tab i = i+1\par
+\tab for i in range(len(list)):\par
+\tab\tab name = list[i]\par
+\tab\tab if path.isdir(path.join(dirname, name)):\par
+\tab\tab\tab list[i] = list[i] + '/'\par
+\tab width = maxwidth(list)\par
+\tab width = width + stdwin.textwidth(' ')\tab # XXX X11 stdwin bug workaround\par
+\tab height = len(list) * stdwin.lineheight()\par
+\tab stdwin.setdefwinsize(width, min(height, 500))\par
+\tab w = stdwin.open(dirname)\par
+\tab stdwin.setdefwinsize(0, 0)\par
+\tab w.setdocsize(width, height)\par
+\tab w.drawproc = drawlistwindow\par
+\tab w.mouse = mouselistwindow\par
+\tab w.close = closelistwindow\par
+\tab w.dirname = dirname\par
+\tab w.list = list\par
+\tab w.selected = -1\par
+\tab return w\par
+\par
+def maxwidth(list):\par
+\tab width = 1\par
+\tab for name in list:\par
+\tab\tab w = stdwin.textwidth(name)\par
+\tab\tab if w > width: width = w\par
+\tab return width\par
+\par
+def drawlistwindow(w, area):\par
+\tab d = w.begindrawing()\par
+\tab d.erase((0, 0), (1000, 10000))\par
+\tab lh = d.lineheight()\par
+\tab h, v = 0, 0\par
+\tab for name in w.list:\par
+\tab\tab d.text((h, v), name)\par
+\tab\tab v = v + lh\par
+\tab showselection(w, d)\par
+\par
+def hideselection(w, d):\par
+\tab if w.selected >= 0:\par
+\tab\tab invertselection(w, d)\par
+\par
+def showselection(w, d):\par
+\tab if w.selected >= 0:\par
+\tab\tab invertselection(w, d)\par
+\par
+def invertselection(w, d):\par
+\tab lh = d.lineheight()\par
+\tab h1, v1 = p1 = 0, w.selected*lh\par
+\tab h2, v2 = p2 = 1000, v1 + lh\par
+\tab d.invert(p1, p2)\par
+\par
+def mouselistwindow(w, type, detail):\par
+\tab (h, v), clicks, button = detail[:3]\par
+\tab d = w.begindrawing()\par
+\tab lh = d.lineheight()\par
+\tab if 0 <= v < lh*len(w.list):\par
+\tab\tab i = v / lh\par
+\tab else:\par
+\tab\tab i = -1\par
+\tab if w.selected <> i:\par
+\tab\tab hideselection(w, d)\par
+\tab\tab w.selected = i\par
+\tab\tab showselection(w, d)\par
+\tab if type == WE_MOUSE_DOWN and clicks >= 2 and i >= 0:\par
+\tab\tab name = path.join(w.dirname, w.list[i])\par
+\tab\tab if name[-1:] == '/':\par
+\tab\tab\tab if clicks == 2:\par
+\tab\tab\tab\tab G.windows.append(openlistwindow(name[:-1]))\par
+\tab\tab else:\par
+\tab\tab\tab playfile(name)\par
+\par
+def closelistwindow(w):\par
+\tab remove(G.windows, w)\par
+\par
+def remove(list, item):\par
+\tab for i in range(len(list)):\par
+\tab\tab if list[i] == item:\par
+\tab\tab\tab del list[i]\par
+\tab\tab\tab break\par
+\par
+\par
+# Playing tools\par
+\par
+cache = \{\}\par
+\par
+def clearcache():\par
+\tab for x in cache.keys():\par
+\tab\tab try:\par
+\tab\tab\tab sts = posix.system('rm -f ' + cache[x])\par
+\tab\tab\tab if sts:\par
+\tab\tab\tab\tab print cmd\par
+\tab\tab\tab\tab print 'Exit status', sts\par
+\tab\tab except:\par
+\tab\tab\tab print cmd\par
+\tab\tab\tab print 'Exception?!'\par
+\tab\tab del cache[x]\par
+\par
+def playfile(name):\par
+\tab if G.mode <> 'mac':\par
+\tab\tab tempname = name\par
+\tab elif cache.has_key(name):\par
+\tab\tab tempname = cache[name]\par
+\tab else:\par
+\tab\tab tempname = G.tempprefix + `rand.rand()`\par
+\tab\tab cmd = HOME_BIN_SGI + 'macsound2sgi'\par
+\tab\tab cmd = cmd + ' ' + commands.mkarg(name)\par
+\tab\tab cmd = cmd + ' >' + tempname\par
+\tab\tab if G.debug: print cmd\par
+\tab\tab sts = posix.system(cmd)\par
+\tab\tab if sts:\par
+\tab\tab\tab print cmd\par
+\tab\tab\tab print 'Exit status', sts\par
+\tab\tab\tab stdwin.fleep()\par
+\tab\tab\tab return\par
+\tab\tab cache[name] = tempname\par
+\tab fp = open(tempname, 'r')\par
+\tab try:\par
+\tab\tab hdr = sunaudio.gethdr(fp)\par
+\tab except sunaudio.error, msg:\par
+\tab\tab hdr = ()\par
+\tab if hdr:\par
+\tab\tab data_size = hdr[0]\par
+\tab\tab data = fp.read(data_size)\par
+\tab\tab # XXX this doesn't work yet, need to convert from uLAW!!!\par
+\tab\tab del fp\par
+\tab else:\par
+\tab\tab del fp\par
+\tab\tab data = readfile(tempname)\par
+\tab if G.debug: print len(data), 'bytes read from', tempname\par
+\tab if G.busy:\par
+\tab\tab G.busy = 0\par
+\tab\tab dummy = audio.stop_playing()\par
+\tab #\par
+\tab # Completely reset the audio device\par
+\tab audio.setrate(G.rate)\par
+\tab audio.setduration(0)\par
+\tab audio.setoutgain(G.gain)\par
+\tab #\par
+\tab if G.synchronous:\par
+\tab\tab audio.write(data)\par
+\tab\tab audio.setoutgain(0)\par
+\tab else:\par
+\tab\tab try:\par
+\tab\tab\tab audio.start_playing(data)\par
+\tab\tab\tab G.busy = 1\par
+\tab\tab except:\par
+\tab\tab\tab stdwin.fleep()\par
+\tab del data\par
+\par
+def readfile(filename):\par
+\tab return readfp(open(filename, 'r'))\par
+\par
+def readfp(fp):\par
+\tab data = ''\par
+\tab while 1:\par
+\tab\tab buf = fp.read(102400) # Reads most samples in one fell swoop\par
+\tab\tab if not buf:\par
+\tab\tab\tab return data\par
+\tab\tab data = data + buf\par
+\par
+main()\par
+\par
+\par
+}
+ 

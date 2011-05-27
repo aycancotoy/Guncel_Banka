@@ -1,0 +1,633 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset162 Microsoft Sans Serif;}}
+\viewkind4\uc1\pard\lang1055\f0\fs17\par
+# Text formatting abstractions\par
+\par
+\par
+import string\par
+import Para\par
+\par
+\par
+# A formatter back-end object has one method that is called by the formatter:\par
+# addpara(p), where p is a paragraph object.  For example:\par
+\par
+\par
+# Formatter back-end to do nothing at all with the paragraphs\par
+class NullBackEnd:\par
+\tab #\par
+\tab def __init__(self):\par
+\tab\tab pass\par
+\tab #\par
+\tab def addpara(self, p):\par
+\tab\tab pass\par
+\tab #\par
+\tab def bgn_anchor(self, id):\par
+\tab\tab pass\par
+\tab #\par
+\tab def end_anchor(self, id):\par
+\tab\tab pass\par
+\par
+\par
+# Formatter back-end to collect the paragraphs in a list\par
+class SavingBackEnd(NullBackEnd):\par
+\tab #\par
+\tab def __init__(self):\par
+\tab\tab self.paralist = []\par
+\tab #\par
+\tab def addpara(self, p):\par
+\tab\tab self.paralist.append(p)\par
+\tab #\par
+\tab def hitcheck(self, h, v):\par
+\tab\tab hits = []\par
+\tab\tab for p in self.paralist:\par
+\tab\tab\tab if p.top <= v <= p.bottom:\par
+\tab\tab\tab\tab for id in p.hitcheck(h, v):\par
+\tab\tab\tab\tab\tab if id not in hits:\par
+\tab\tab\tab\tab\tab\tab hits.append(id)\par
+\tab\tab return hits\par
+\tab #\par
+\tab def extract(self):\par
+\tab\tab text = ''\par
+\tab\tab for p in self.paralist:\par
+\tab\tab\tab text = text + (p.extract())\par
+\tab\tab return text\par
+\tab #\par
+\tab def extractpart(self, long1, long2):\par
+\tab\tab if long1 > long2: long1, long2 = long2, long1\par
+\tab\tab para1, pos1 = long1\par
+\tab\tab para2, pos2 = long2\par
+\tab\tab text = ''\par
+\tab\tab while para1 < para2:\par
+\tab\tab\tab ptext = self.paralist[para1].extract()\par
+\tab\tab\tab text = text + ptext[pos1:]\par
+\tab\tab\tab pos1 = 0\par
+\tab\tab\tab para1 = para1 + 1\par
+\tab\tab ptext = self.paralist[para2].extract()\par
+\tab\tab return text + ptext[pos1:pos2]\par
+\tab #\par
+\tab def whereis(self, d, h, v):\par
+\tab\tab total = 0\par
+\tab\tab for i in range(len(self.paralist)):\par
+\tab\tab\tab p = self.paralist[i]\par
+\tab\tab\tab result = p.whereis(d, h, v)\par
+\tab\tab\tab if result <> None:\par
+\tab\tab\tab\tab return i, result\par
+\tab\tab return None\par
+\tab #\par
+\tab def roundtowords(self, long1, long2):\par
+\tab\tab i, offset = long1\par
+\tab\tab text = self.paralist[i].extract()\par
+\tab\tab while offset > 0 and text[offset-1] <> ' ': offset = offset-1\par
+\tab\tab long1 = i, offset\par
+\tab\tab #\par
+\tab\tab i, offset = long2\par
+\tab\tab text = self.paralist[i].extract()\par
+\tab\tab n = len(text)\par
+\tab\tab while offset < n-1 and text[offset] <> ' ': offset = offset+1\par
+\tab\tab long2 = i, offset\par
+\tab\tab #\par
+\tab\tab return long1, long2\par
+\tab #\par
+\tab def roundtoparagraphs(self, long1, long2):\par
+\tab\tab long1 = long1[0], 0\par
+\tab\tab long2 = long2[0], len(self.paralist[long2[0]].extract())\par
+\tab\tab return long1, long2\par
+\par
+\par
+# Formatter back-end to send the text directly to the drawing object\par
+class WritingBackEnd(NullBackEnd):\par
+\tab #\par
+\tab def __init__(self, d, width):\par
+\tab\tab self.d = d\par
+\tab\tab self.width = width\par
+\tab\tab self.lineno = 0\par
+\tab #\par
+\tab def addpara(self, p):\par
+\tab\tab self.lineno = p.render(self.d, 0, self.lineno, self.width)\par
+\par
+\par
+# A formatter receives a stream of formatting instructions and assembles\par
+# these into a stream of paragraphs on to a back-end.  The assembly is\par
+# parametrized by a text measurement object, which must match the output\par
+# operations of the back-end.  The back-end is responsible for splitting\par
+# paragraphs up in lines of a given maximum width.  (This is done because\par
+# in a windowing environment, when the window size changes, there is no\par
+# need to redo the assembly into paragraphs, but the splitting into lines\par
+# must be done taking the new window size into account.)\par
+\par
+\par
+# Formatter base class.  Initialize it with a text measurement object,\par
+# which is used for text measurements, and a back-end object,\par
+# which receives the completed paragraphs.  The formatting methods are:\par
+# setfont(font)\par
+# setleftindent(nspaces)\par
+# setjust(type) where type is 'l', 'c', 'r', or 'lr'\par
+# flush()\par
+# vspace(nlines)\par
+# needvspace(nlines)\par
+# addword(word, nspaces)\par
+class BaseFormatter:\par
+\tab #\par
+\tab def __init__(self, d, b):\par
+\tab\tab # Drawing object used for text measurements\par
+\tab\tab self.d = d\par
+\tab\tab #\par
+\tab\tab # BackEnd object receiving completed paragraphs\par
+\tab\tab self.b = b\par
+\tab\tab #\par
+\tab\tab # Parameters of the formatting model\par
+\tab\tab self.leftindent = 0\par
+\tab\tab self.just = 'l'\par
+\tab\tab self.font = None\par
+\tab\tab self.blanklines = 0\par
+\tab\tab #\par
+\tab\tab # Parameters derived from the current font\par
+\tab\tab self.space = d.textwidth(' ')\par
+\tab\tab self.line = d.lineheight()\par
+\tab\tab self.ascent = d.baseline()\par
+\tab\tab self.descent = self.line - self.ascent\par
+\tab\tab #\par
+\tab\tab # Parameter derived from the default font\par
+\tab\tab self.n_space = self.space\par
+\tab\tab #\par
+\tab\tab # Current paragraph being built\par
+\tab\tab self.para = None\par
+\tab\tab self.nospace = 1\par
+\tab\tab #\par
+\tab\tab # Font to set on the next word\par
+\tab\tab self.nextfont = None\par
+\tab #\par
+\tab def newpara(self):\par
+\tab\tab return Para.Para()\par
+\tab #\par
+\tab def setfont(self, font):\par
+\tab\tab if font == None: return\par
+\tab\tab self.font = self.nextfont = font\par
+\tab\tab d = self.d\par
+\tab\tab d.setfont(font)\par
+\tab\tab self.space = d.textwidth(' ')\par
+\tab\tab self.line = d.lineheight()\par
+\tab\tab self.ascent = d.baseline()\par
+\tab\tab self.descent = self.line - self.ascent\par
+\tab #\par
+\tab def setleftindent(self, nspaces):\par
+\tab\tab self.leftindent = int(self.n_space * nspaces)\par
+\tab\tab if self.para:\par
+\tab\tab\tab hang = self.leftindent - self.para.indent_left\par
+\tab\tab\tab if hang > 0 and self.para.getlength() <= hang:\par
+\tab\tab\tab\tab self.para.makehangingtag(hang)\par
+\tab\tab\tab\tab self.nospace = 1\par
+\tab\tab\tab else:\par
+\tab\tab\tab\tab self.flush()\par
+\tab #\par
+\tab def setrightindent(self, nspaces):\par
+\tab\tab self.rightindent = int(self.n_space * nspaces)\par
+\tab\tab if self.para:\par
+\tab\tab\tab self.para.indent_right = self.rightindent\par
+\tab\tab\tab self.flush()\par
+\tab #\par
+\tab def setjust(self, just):\par
+\tab\tab self.just = just\par
+\tab\tab if self.para:\par
+\tab\tab\tab self.para.just = self.just\par
+\tab #\par
+\tab def flush(self):\par
+\tab\tab if self.para:\par
+\tab\tab\tab self.b.addpara(self.para)\par
+\tab\tab\tab self.para = None\par
+\tab\tab\tab if self.font <> None:\par
+\tab\tab\tab\tab self.d.setfont(self.font)\par
+\tab\tab self.nospace = 1\par
+\tab #\par
+\tab def vspace(self, nlines):\par
+\tab\tab self.flush()\par
+\tab\tab if nlines > 0:\par
+\tab\tab\tab self.para = self.newpara()\par
+\tab\tab\tab tuple = None, '', 0, 0, 0, int(nlines*self.line), 0\par
+\tab\tab\tab self.para.words.append(tuple)\par
+\tab\tab\tab self.flush()\par
+\tab\tab\tab self.blanklines = self.blanklines + nlines\par
+\tab #\par
+\tab def needvspace(self, nlines):\par
+\tab\tab self.flush() # Just to be sure\par
+\tab\tab if nlines > self.blanklines:\par
+\tab\tab\tab self.vspace(nlines - self.blanklines)\par
+\tab #\par
+\tab def addword(self, text, space):\par
+\tab\tab if self.nospace and not text:\par
+\tab\tab\tab return\par
+\tab\tab self.nospace = 0\par
+\tab\tab self.blanklines = 0\par
+\tab\tab if not self.para:\par
+\tab\tab\tab self.para = self.newpara()\par
+\tab\tab\tab self.para.indent_left = self.leftindent\par
+\tab\tab\tab self.para.just = self.just\par
+\tab\tab\tab self.nextfont = self.font\par
+\tab\tab space = int(space * self.space)\par
+\tab\tab self.para.words.append(self.nextfont, text, \\\par
+\tab\tab\tab self.d.textwidth(text), space, space, \\\par
+\tab\tab\tab self.ascent, self.descent)\par
+\tab\tab self.nextfont = None\par
+\tab #\par
+\tab def bgn_anchor(self, id):\par
+\tab\tab if not self.para:\par
+\tab\tab\tab self.nospace = 0\par
+\tab\tab\tab self.addword('', 0)\par
+\tab\tab self.para.bgn_anchor(id)\par
+\tab #\par
+\tab def end_anchor(self, id):\par
+\tab\tab if not self.para:\par
+\tab\tab\tab self.nospace = 0\par
+\tab\tab\tab self.addword('', 0)\par
+\tab\tab self.para.end_anchor(id)\par
+\tab #\par
+\tab def hrule(self):\par
+\tab\tab # Typically need to override this for bit-mapped displays\par
+\tab\tab self.flush()\par
+\tab\tab self.addword('-'*60, 0)\par
+\tab\tab self.flush()\par
+\par
+\par
+# Measuring object for measuring text as viewed on a tty\par
+class NullMeasurer:\par
+\tab #\par
+\tab def __init__(self):\par
+\tab\tab pass\par
+\tab #\par
+\tab def setfont(self, font):\par
+\tab\tab pass\par
+\tab #\par
+\tab def textwidth(self, text):\par
+\tab\tab return len(text)\par
+\tab #\par
+\tab def lineheight(self):\par
+\tab\tab return 1\par
+\tab #\par
+\tab def baseline(self):\par
+\tab\tab return 0\par
+\par
+\par
+# Drawing object for writing plain ASCII text to a file\par
+class FileWriter:\par
+\tab #\par
+\tab def __init__(self, fp):\par
+\tab\tab self.fp = fp\par
+\tab\tab self.lineno, self.colno = 0, 0\par
+\tab #\par
+\tab def setfont(self, font):\par
+\tab\tab pass\par
+\tab #\par
+\tab def text(self, (h, v), str):\par
+\tab\tab if not str: return\par
+\tab\tab if '\\n' in str:\par
+\tab\tab\tab raise ValueError, 'can\\'t write \\\\n'\par
+\tab\tab while self.lineno < v:\par
+\tab\tab\tab self.fp.write('\\n')\par
+\tab\tab\tab self.colno, self.lineno = 0, self.lineno + 1\par
+\tab\tab while self.lineno > v:\par
+\tab\tab\tab # XXX This should never happen...\par
+\tab\tab\tab self.fp.write('\\033[A') # ANSI up arrow\par
+\tab\tab\tab self.lineno = self.lineno - 1\par
+\tab\tab if self.colno < h:\par
+\tab\tab\tab self.fp.write(' ' * (h - self.colno))\par
+\tab\tab elif self.colno > h:\par
+\tab\tab\tab self.fp.write('\\b' * (self.colno - h))\par
+\tab\tab self.colno = h\par
+\tab\tab self.fp.write(str)\par
+\tab\tab self.colno = h + len(str)\par
+\par
+\par
+# Formatting class to do nothing at all with the data\par
+class NullFormatter(BaseFormatter):\par
+\tab #\par
+\tab def __init__(self):\par
+\tab\tab d = NullMeasurer()\par
+\tab\tab b = NullBackEnd()\par
+\tab\tab BaseFormatter.__init__(self, d, b)\par
+\par
+\par
+# Formatting class to write directly to a file\par
+class WritingFormatter(BaseFormatter):\par
+\tab #\par
+\tab def __init__(self, fp, width):\par
+\tab\tab dm = NullMeasurer()\par
+\tab\tab dw = FileWriter(fp)\par
+\tab\tab b = WritingBackEnd(dw, width)\par
+\tab\tab BaseFormatter.__init__(self, dm, b)\par
+\tab\tab self.blanklines = 1\par
+\tab #\par
+\tab # Suppress multiple blank lines\par
+\tab def needvspace(self, nlines):\par
+\tab\tab BaseFormatter.needvspace(self, min(1, nlines))\par
+\par
+\par
+# A "FunnyFormatter" writes ASCII text with a twist: *bold words*,\par
+# _italic text_ and _underlined words_, and `quoted text'.\par
+# It assumes that the fonts are 'r', 'i', 'b', 'u', 'q': (roman,\par
+# italic, bold, underline, quote).\par
+# Moreover, if the font is in upper case, the text is converted to\par
+# UPPER CASE.\par
+class FunnyFormatter(WritingFormatter):\par
+\tab #\par
+\tab def flush(self):\par
+\tab\tab if self.para: finalize(self.para)\par
+\tab\tab WritingFormatter.flush(self)\par
+\par
+\par
+# Surrounds *bold words* and _italic text_ in a paragraph with\par
+# appropriate markers, fixing the size (assuming these characters'\par
+# width is 1).\par
+openchar = \\\par
+    \{'b':'*', 'i':'_', 'u':'_', 'q':'`', 'B':'*', 'I':'_', 'U':'_', 'Q':'`'\}\par
+closechar = \\\par
+    \{'b':'*', 'i':'_', 'u':'_', 'q':'\\'', 'B':'*', 'I':'_', 'U':'_', 'Q':'\\''\}\par
+def finalize(para):\par
+\tab oldfont = curfont = 'r'\par
+\tab para.words.append('r', '', 0, 0, 0, 0) # temporary, deleted at end\par
+\tab for i in range(len(para.words)):\par
+\tab\tab fo, te, wi = para.words[i][:3]\par
+\tab\tab if fo <> None: curfont = fo\par
+\tab\tab if curfont <> oldfont:\par
+\tab\tab\tab if closechar.has_key(oldfont):\par
+\tab\tab\tab\tab c = closechar[oldfont]\par
+\tab\tab\tab\tab j = i-1\par
+\tab\tab\tab\tab while j > 0 and para.words[j][1] == '': j = j-1\par
+\tab\tab\tab\tab fo1, te1, wi1 = para.words[j][:3]\par
+\tab\tab\tab\tab te1 = te1 + c\par
+\tab\tab\tab\tab wi1 = wi1 + len(c)\par
+\tab\tab\tab\tab para.words[j] = (fo1, te1, wi1) + \\\par
+\tab\tab\tab\tab\tab para.words[j][3:]\par
+\tab\tab\tab if openchar.has_key(curfont) and te:\par
+\tab\tab\tab\tab c = openchar[curfont]\par
+\tab\tab\tab\tab te = c + te\par
+\tab\tab\tab\tab wi = len(c) + wi\par
+\tab\tab\tab\tab para.words[i] = (fo, te, wi) + \\\par
+\tab\tab\tab\tab\tab para.words[i][3:]\par
+\tab\tab\tab if te: oldfont = curfont\par
+\tab\tab\tab else: oldfont = 'r'\par
+\tab\tab if curfont in string.uppercase:\par
+\tab\tab\tab te = string.upper(te)\par
+\tab\tab\tab para.words[i] = (fo, te, wi) + para.words[i][3:]\par
+\tab del para.words[-1]\par
+\par
+\par
+# Formatter back-end to draw the text in a window.\par
+# This has an option to draw while the paragraphs are being added,\par
+# to minimize the delay before the user sees anything.\par
+# This manages the entire "document" of the window.\par
+class StdwinBackEnd(SavingBackEnd):\par
+\tab #\par
+\tab def __init__(self, window, drawnow):\par
+\tab\tab self.window = window\par
+\tab\tab self.drawnow = drawnow\par
+\tab\tab self.width = window.getwinsize()[0]\par
+\tab\tab self.selection = None\par
+\tab\tab self.height = 0\par
+\tab\tab window.setorigin(0, 0)\par
+\tab\tab window.setdocsize(0, 0)\par
+\tab\tab self.d = window.begindrawing()\par
+\tab\tab SavingBackEnd.__init__(self)\par
+\tab #\par
+\tab def finish(self):\par
+\tab\tab self.d.close()\par
+\tab\tab self.d = None\par
+\tab\tab self.window.setdocsize(0, self.height)\par
+\tab #\par
+\tab def addpara(self, p):\par
+\tab\tab self.paralist.append(p)\par
+\tab\tab if self.drawnow:\par
+\tab\tab\tab self.height = \\\par
+\tab\tab\tab\tab p.render(self.d, 0, self.height, self.width)\par
+\tab\tab else:\par
+\tab\tab\tab p.layout(self.width)\par
+\tab\tab\tab p.left = 0\par
+\tab\tab\tab p.top = self.height\par
+\tab\tab\tab p.right = self.width\par
+\tab\tab\tab p.bottom = self.height + p.height\par
+\tab\tab\tab self.height = p.bottom\par
+\tab #\par
+\tab def resize(self):\par
+\tab\tab self.window.change((0, 0), (self.width, self.height))\par
+\tab\tab self.width = self.window.getwinsize()[0]\par
+\tab\tab self.height = 0\par
+\tab\tab for p in self.paralist:\par
+\tab\tab\tab p.layout(self.width)\par
+\tab\tab\tab p.left = 0\par
+\tab\tab\tab p.top = self.height\par
+\tab\tab\tab p.right = self.width\par
+\tab\tab\tab p.bottom = self.height + p.height\par
+\tab\tab\tab self.height = p.bottom\par
+\tab\tab self.window.change((0, 0), (self.width, self.height))\par
+\tab\tab self.window.setdocsize(0, self.height)\par
+\tab #\par
+\tab def redraw(self, area):\par
+\tab\tab d = self.window.begindrawing()\par
+\tab\tab (left, top), (right, bottom) = area\par
+\tab\tab d.erase(area)\par
+\tab\tab d.cliprect(area)\par
+\tab\tab for p in self.paralist:\par
+\tab\tab\tab if top < p.bottom and p.top < bottom:\par
+\tab\tab\tab\tab v = p.render(d, p.left, p.top, p.right)\par
+\tab\tab if self.selection:\par
+\tab\tab\tab self.invert(d, self.selection)\par
+\tab\tab d.close()\par
+\tab #\par
+\tab def setselection(self, new):\par
+\tab\tab if new:\par
+\tab\tab\tab long1, long2 = new\par
+\tab\tab\tab pos1 = long1[:3]\par
+\tab\tab\tab pos2 = long2[:3]\par
+\tab\tab\tab new = pos1, pos2\par
+\tab\tab if new <> self.selection:\par
+\tab\tab\tab d = self.window.begindrawing()\par
+\tab\tab\tab if self.selection:\par
+\tab\tab\tab\tab self.invert(d, self.selection)\par
+\tab\tab\tab if new:\par
+\tab\tab\tab\tab self.invert(d, new)\par
+\tab\tab\tab d.close()\par
+\tab\tab\tab self.selection = new\par
+\tab #\par
+\tab def getselection(self):\par
+\tab\tab return self.selection\par
+\tab #\par
+\tab def extractselection(self):\par
+\tab\tab if self.selection:\par
+\tab\tab\tab a, b = self.selection\par
+\tab\tab\tab return self.extractpart(a, b)\par
+\tab\tab else:\par
+\tab\tab\tab return None\par
+\tab #\par
+\tab def invert(self, d, region):\par
+\tab\tab long1, long2 = region\par
+\tab\tab if long1 > long2: long1, long2 = long2, long1\par
+\tab\tab para1, pos1 = long1\par
+\tab\tab para2, pos2 = long2\par
+\tab\tab while para1 < para2:\par
+\tab\tab\tab self.paralist[para1].invert(d, pos1, None)\par
+\tab\tab\tab pos1 = None\par
+\tab\tab\tab para1 = para1 + 1\par
+\tab\tab self.paralist[para2].invert(d, pos1, pos2)\par
+\tab #\par
+\tab def search(self, prog):\par
+\tab\tab import regex, string\par
+\tab\tab if type(prog) == type(''):\par
+\tab\tab\tab prog = regex.compile(string.lower(prog))\par
+\tab\tab if self.selection:\par
+\tab\tab\tab iold = self.selection[0][0]\par
+\tab\tab else:\par
+\tab\tab\tab iold = -1\par
+\tab\tab hit = None\par
+\tab\tab for i in range(len(self.paralist)):\par
+\tab\tab\tab if i == iold or i < iold and hit:\par
+\tab\tab\tab\tab continue\par
+\tab\tab\tab p = self.paralist[i]\par
+\tab\tab\tab text = string.lower(p.extract())\par
+\tab\tab\tab if prog.search(text) >= 0:\par
+\tab\tab\tab\tab a, b = prog.regs[0]\par
+\tab\tab\tab\tab long1 = i, a\par
+\tab\tab\tab\tab long2 = i, b\par
+\tab\tab\tab\tab hit = long1, long2\par
+\tab\tab\tab\tab if i > iold:\par
+\tab\tab\tab\tab\tab break\par
+\tab\tab if hit:\par
+\tab\tab\tab self.setselection(hit)\par
+\tab\tab\tab i = hit[0][0]\par
+\tab\tab\tab p = self.paralist[i]\par
+\tab\tab\tab self.window.show((p.left, p.top), (p.right, p.bottom))\par
+\tab\tab\tab return 1\par
+\tab\tab else:\par
+\tab\tab\tab return 0\par
+\tab #\par
+\tab def showanchor(self, id):\par
+\tab\tab for i in range(len(self.paralist)):\par
+\tab\tab\tab p = self.paralist[i]\par
+\tab\tab\tab if p.hasanchor(id):\par
+\tab\tab\tab\tab long1 = i, 0\par
+\tab\tab\tab\tab long2 = i, len(p.extract())\par
+\tab\tab\tab\tab hit = long1, long2\par
+\tab\tab\tab\tab self.setselection(hit)\par
+\tab\tab\tab\tab self.window.show( \\\par
+\tab\tab\tab\tab\tab (p.left, p.top), (p.right, p.bottom))\par
+\tab\tab\tab\tab break\par
+\par
+\par
+# GL extensions\par
+\par
+class GLFontCache:\par
+\tab #\par
+\tab def __init__(self):\par
+\tab\tab self.reset()\par
+\tab\tab self.setfont('')\par
+\tab #\par
+\tab def reset(self):\par
+\tab\tab self.fontkey = None\par
+\tab\tab self.fonthandle = None\par
+\tab\tab self.fontinfo = None\par
+\tab\tab self.fontcache = \{\}\par
+\tab #\par
+\tab def close(self):\par
+\tab\tab self.reset()\par
+\tab #\par
+\tab def setfont(self, fontkey):\par
+\tab\tab if fontkey == '':\par
+\tab\tab\tab fontkey = 'Times-Roman 12'\par
+\tab\tab elif ' ' not in fontkey:\par
+\tab\tab\tab fontkey = fontkey + ' 12'\par
+\tab\tab if fontkey == self.fontkey:\par
+\tab\tab\tab return\par
+\tab\tab if self.fontcache.has_key(fontkey):\par
+\tab\tab\tab handle = self.fontcache[fontkey]\par
+\tab\tab else:\par
+\tab\tab\tab import string\par
+\tab\tab\tab i = string.index(fontkey, ' ')\par
+\tab\tab\tab name, sizestr = fontkey[:i], fontkey[i:]\par
+\tab\tab\tab size = eval(sizestr)\par
+\tab\tab\tab key1 = name + ' 1'\par
+\tab\tab\tab key = name + ' ' + `size`\par
+\tab\tab\tab # NB key may differ from fontkey!\par
+\tab\tab\tab if self.fontcache.has_key(key):\par
+\tab\tab\tab\tab handle = self.fontcache[key]\par
+\tab\tab\tab else:\par
+\tab\tab\tab\tab if self.fontcache.has_key(key1):\par
+\tab\tab\tab\tab\tab handle = self.fontcache[key1]\par
+\tab\tab\tab\tab else:\par
+\tab\tab\tab\tab\tab import fm\par
+\tab\tab\tab\tab\tab handle = fm.findfont(name)\par
+\tab\tab\tab\tab\tab self.fontcache[key1] = handle\par
+\tab\tab\tab\tab handle = handle.scalefont(size)\par
+\tab\tab\tab\tab self.fontcache[fontkey] = \\\par
+\tab\tab\tab\tab\tab self.fontcache[key] = handle\par
+\tab\tab self.fontkey = fontkey\par
+\tab\tab if self.fonthandle <> handle:\par
+\tab\tab\tab self.fonthandle = handle\par
+\tab\tab\tab self.fontinfo = handle.getfontinfo()\par
+\tab\tab\tab handle.setfont()\par
+\par
+\par
+class GLMeasurer(GLFontCache):\par
+\tab #\par
+\tab def textwidth(self, text):\par
+\tab\tab return self.fonthandle.getstrwidth(text)\par
+\tab #\par
+\tab def baseline(self):\par
+\tab\tab return self.fontinfo[6] - self.fontinfo[3]\par
+\tab #\par
+\tab def lineheight(self):\par
+\tab\tab return self.fontinfo[6]\par
+\par
+\par
+class GLWriter(GLFontCache):\par
+\tab #\par
+\tab # NOTES:\par
+\tab # (1) Use gl.ortho2 to use X pixel coordinates!\par
+\tab #\par
+\tab def text(self, (h, v), text):\par
+\tab\tab import gl, fm\par
+\tab\tab gl.cmov2i(h, v + self.fontinfo[6] - self.fontinfo[3])\par
+\tab\tab fm.prstr(text)\par
+\tab #\par
+\tab def setfont(self, fontkey):\par
+\tab\tab oldhandle = self.fonthandle\par
+\tab\tab GLFontCache.setfont(fontkey)\par
+\tab\tab if self.fonthandle <> oldhandle:\par
+\tab\tab\tab handle.setfont()\par
+\par
+\par
+class GLMeasurerWriter(GLMeasurer, GLWriter):\par
+\tab pass\par
+\par
+\par
+class GLBackEnd(SavingBackEnd):\par
+\tab #\par
+\tab def __init__(self, wid):\par
+\tab\tab import gl\par
+\tab\tab gl.winset(wid)\par
+\tab\tab self.wid = wid\par
+\tab\tab self.width = gl.getsize()[1]\par
+\tab\tab self.height = 0\par
+\tab\tab self.d = GLMeasurerWriter()\par
+\tab\tab SavingBackEnd.__init__(self)\par
+\tab #\par
+\tab def finish(self):\par
+\tab\tab pass\par
+\tab #\par
+\tab def addpara(self, p):\par
+\tab\tab self.paralist.append(p)\par
+\tab\tab self.height = p.render(self.d, 0, self.height, self.width)\par
+\tab #\par
+\tab def redraw(self):\par
+\tab\tab import gl\par
+\tab\tab gl.winset(self.wid)\par
+\tab\tab width = gl.getsize()[1]\par
+\tab\tab if width <> self.width:\par
+\tab\tab\tab setdocsize = 1\par
+\tab\tab\tab self.width = width\par
+\tab\tab\tab for p in self.paralist:\par
+\tab\tab\tab\tab p.top = p.bottom = None\par
+\tab\tab d = self.d\par
+\tab\tab v = 0\par
+\tab\tab for p in self.paralist:\par
+\tab\tab\tab v = p.render(d, 0, v, width)\par
+\par
+\par
+}
+ 

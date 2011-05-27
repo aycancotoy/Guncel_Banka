@@ -1,0 +1,623 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset162 Microsoft Sans Serif;}}
+\viewkind4\uc1\pard\lang1055\f0\fs17\par
+# Browser for "Info files" as used by the Emacs documentation system.\par
+#\par
+# Now you can read Info files even if you can't spare the memory, time or\par
+# disk space to run Emacs.  (I have used this extensively on a Macintosh\par
+# with 1 Megabyte main memory and a 20 Meg harddisk.)\par
+#\par
+# You can give this to someone with great fear of complex computer\par
+# systems, as long as they can use a mouse.\par
+#\par
+# Another reason to use this is to encourage the use of Info for on-line\par
+# documentation of software that is not related to Emacs or GNU.\par
+# (In particular, I plan to redo the Python and STDWIN documentation\par
+# in texinfo.)\par
+\par
+\par
+# NB: this is not a self-executing script.  You must startup Python,\par
+# import ibrowse, and call ibrowse.main().  On UNIX, the script 'ib'\par
+# runs the browser.\par
+\par
+\par
+# Configuration:\par
+#\par
+# - The pathname of the directory (or directories) containing\par
+#   the standard Info files should be set by editing the\par
+#   value assigned to INFOPATH in module ifile.py.\par
+#\par
+# - The default font should be set by editing the value of FONT\par
+#   in this module (ibrowse.py).\par
+#\par
+# - For fastest I/O, you may look at BLOCKSIZE and a few other\par
+#   constants in ifile.py.\par
+\par
+\par
+# This is a fairly large Python program, split in the following modules:\par
+#\par
+# ibrowse.py\tab Main program and user interface.\par
+#\tab\tab This is the only module that imports stdwin.\par
+#\par
+# ifile.py\tab This module knows about the format of Info files.\par
+#\tab\tab It is imported by all of the others.\par
+#\par
+# itags.py\tab This module knows how to read prebuilt tag tables,\par
+#\tab\tab including indirect ones used by large texinfo files.\par
+#\par
+# icache.py\tab Caches tag tables and visited nodes.\par
+\par
+\par
+# XXX There should really be a different tutorial, as the user interface\par
+# XXX differs considerably from Emacs...\par
+\par
+\par
+import sys\par
+import regexp\par
+import stdwin\par
+from stdwinevents import *\par
+import string\par
+from ifile import NoSuchFile, NoSuchNode\par
+import icache\par
+\par
+\par
+# Default font.\par
+# This should be an acceptable argument for stdwin.setfont();\par
+# on the Mac, this can be a pair (fontname, pointsize), while\par
+# under X11 it should be a standard X11 font name.\par
+# For best results, use a constant width font like Courier;\par
+# many Info files contain tabs that don't align with other text\par
+# unless all characters have the same width.\par
+#\par
+#FONT = ('Monaco', 9)\tab\tab # Mac\par
+FONT = '-schumacher-clean-medium-r-normal--14-140-75-75-c-70-iso8859-1'\tab # X11\par
+\par
+\par
+# Try not to destroy the list of windows when reload() is used.\par
+# This is useful during debugging, and harmless in production...\par
+#\par
+try:\par
+\tab dummy = windows\par
+\tab del dummy\par
+except NameError:\par
+\tab windows = []\par
+\par
+\par
+# Default main function -- start at the '(dir)' node.\par
+#\par
+def main():\par
+\tab start('(dir)')\par
+\par
+\par
+# Start at an arbitrary node.\par
+# The default file is 'ibrowse'.\par
+#\par
+def start(ref):\par
+\tab stdwin.setdefscrollbars(0, 1)\par
+\tab stdwin.setfont(FONT)\par
+\tab stdwin.setdefwinsize(76*stdwin.textwidth('x'), 22*stdwin.lineheight())\par
+\tab makewindow('ibrowse', ref)\par
+\tab mainloop()\par
+\par
+\par
+# Open a new browser window.\par
+# Arguments specify the default file and a node reference\par
+# (if the node reference specifies a file, the default file is ignored).\par
+#\par
+def makewindow(file, ref):\par
+\tab win = stdwin.open('Info file Browser, by Guido van Rossum')\par
+\tab win.mainmenu = makemainmenu(win)\par
+\tab win.navimenu = makenavimenu(win)\par
+\tab win.textobj = win.textcreate((0, 0), win.getwinsize())\par
+\tab win.file = file\par
+\tab win.node = ''\par
+\tab win.last = []\par
+\tab win.pat = ''\par
+\tab win.dispatch = idispatch\par
+\tab win.nodemenu = None\par
+\tab win.footmenu = None\par
+\tab windows.append(win)\par
+\tab imove(win, ref)\par
+\par
+# Create the 'Ibrowse' menu for a new browser window.\par
+#\par
+def makemainmenu(win):\par
+\tab mp = win.menucreate('Ibrowse')\par
+\tab mp.callback = []\par
+\tab additem(mp, 'New window (clone)',\tab 'K', iclone)\par
+\tab additem(mp, 'Help (tutorial)',\tab\tab 'H', itutor)\par
+\tab additem(mp, 'Command summary',\tab\tab '?', isummary)\par
+\tab additem(mp, 'Close this window',\tab 'W', iclose)\par
+\tab additem(mp, '', '', None)\par
+\tab additem(mp, 'Copy to clipboard',\tab 'C', icopy)\par
+\tab additem(mp, '', '', None)\par
+\tab additem(mp, 'Search regexp...',\tab\tab 'S', isearch)\par
+\tab additem(mp, '', '', None)\par
+\tab additem(mp, 'Reset node cache',\tab\tab '',  iresetnodecache)\par
+\tab additem(mp, 'Reset entire cache',\tab '',  iresetcache)\par
+\tab additem(mp, '', '', None)\par
+\tab additem(mp, 'Quit',\tab\tab\tab 'Q', iquit)\par
+\tab return mp\par
+\par
+# Create the 'Navigation' menu for a new browser window.\par
+#\par
+def makenavimenu(win):\par
+\tab mp = win.menucreate('Navigation')\par
+\tab mp.callback = []\par
+\tab additem(mp, 'Menu item...',\tab\tab 'M', imenu)\par
+\tab additem(mp, 'Follow reference...',\tab 'F', ifollow)\par
+\tab additem(mp, 'Go to node...',\tab\tab 'G', igoto)\par
+\tab additem(mp, '', '', None)\par
+\tab additem(mp, 'Next node in tree',\tab 'N', inext)\par
+\tab additem(mp, 'Previous node in tree',\tab 'P', iprev)\par
+\tab additem(mp, 'Up in tree',\tab\tab 'U', iup)\par
+\tab additem(mp, 'Last visited node',\tab 'L', ilast)\par
+\tab additem(mp, 'Top of tree',\tab\tab 'T', itop)\par
+\tab additem(mp, 'Directory node',\tab\tab 'D', idir)\par
+\tab return mp\par
+\par
+# Add an item to a menu, and a function to its list of callbacks.\par
+# (Specifying all in one call is the only way to keep the menu\par
+# and the list of callbacks in synchrony.)\par
+#\par
+def additem(mp, text, shortcut, function):\par
+\tab if shortcut:\par
+\tab\tab mp.additem(text, shortcut)\par
+\tab else:\par
+\tab\tab mp.additem(text)\par
+\tab mp.callback.append(function)\par
+\par
+\par
+# Stdwin event processing main loop.\par
+# Return when there are no windows left.\par
+# Note that windows not in the windows list don't get their events.\par
+#\par
+def mainloop():\par
+\tab while windows:\par
+\tab\tab event = stdwin.getevent()\par
+\tab\tab if event[1] in windows:\par
+\tab\tab\tab try:\par
+\tab\tab\tab\tab event[1].dispatch(event)\par
+\tab\tab\tab except KeyboardInterrupt:\par
+\tab\tab\tab\tab # The user can type Control-C (or whatever)\par
+\tab\tab\tab\tab # to leave the browser without closing\par
+\tab\tab\tab\tab # the window.  Mainly useful for\par
+\tab\tab\tab\tab # debugging.\par
+\tab\tab\tab\tab break\par
+\tab\tab\tab except:\par
+\tab\tab\tab\tab # During debugging, it was annoying if\par
+\tab\tab\tab\tab # every mistake in a callback caused the\par
+\tab\tab\tab\tab # whole browser to crash, hence this\par
+\tab\tab\tab\tab # handler.  In a production version\par
+\tab\tab\tab\tab # it may be better to disable this.\par
+\tab\tab\tab\tab #\par
+\tab\tab\tab\tab msg = sys.exc_type\par
+\tab\tab\tab\tab if sys.exc_value:\par
+\tab\tab\tab\tab\tab val = sys.exc_value\par
+\tab\tab\tab\tab\tab if type(val) <> type(''):\par
+\tab\tab\tab\tab\tab\tab val = `val`\par
+\tab\tab\tab\tab\tab msg = msg + ': ' + val\par
+\tab\tab\tab\tab msg = 'Oops, an exception occurred: ' + msg\par
+\tab\tab\tab\tab event = None\par
+\tab\tab\tab\tab stdwin.message(msg)\par
+\tab\tab event = None\par
+\par
+\par
+# Handle one event.  The window is taken from the event's window item.\par
+# This function is placed as a method (named 'dispatch') on the window,\par
+# so the main loop will be able to handle windows of a different kind\par
+# as well, as long as they are all placed in the list of windows.\par
+#\par
+def idispatch(event):\par
+\tab type, win, detail = event\par
+\tab if type == WE_CHAR:\par
+\tab\tab if not keybindings.has_key(detail):\par
+\tab\tab\tab detail = string.lower(detail)\par
+\tab\tab if keybindings.has_key(detail):\par
+\tab\tab\tab keybindings[detail](win)\par
+\tab\tab\tab return\par
+\tab\tab if detail in '0123456789':\par
+\tab\tab\tab i = eval(detail) - 1\par
+\tab\tab\tab if i < 0: i = len(win.menu) + i\par
+\tab\tab\tab if 0 <= i < len(win.menu):\par
+\tab\tab\tab\tab topic, ref = win.menu[i]\par
+\tab\tab\tab\tab imove(win, ref)\par
+\tab\tab\tab\tab return\par
+\tab\tab stdwin.fleep()\par
+\tab\tab return\par
+\tab if type == WE_COMMAND:\par
+\tab\tab if detail == WC_LEFT:\par
+\tab\tab\tab iprev(win)\par
+\tab\tab elif detail == WC_RIGHT:\par
+\tab\tab\tab inext(win)\par
+\tab\tab elif detail == WC_UP:\par
+\tab\tab\tab iup(win)\par
+\tab\tab elif detail == WC_DOWN:\par
+\tab\tab\tab idown(win)\par
+\tab\tab elif detail == WC_BACKSPACE:\par
+\tab\tab\tab ibackward(win)\par
+\tab\tab elif detail == WC_RETURN:\par
+\tab\tab\tab idown(win)\par
+\tab\tab else:\par
+\tab\tab\tab stdwin.fleep()\par
+\tab\tab return\par
+\tab if type == WE_MENU:\par
+\tab\tab mp, item = detail\par
+\tab\tab if mp == None:\par
+\tab\tab\tab pass # A THINK C console menu was selected\par
+\tab\tab elif mp in (win.mainmenu, win.navimenu):\par
+\tab\tab\tab mp.callback[item](win)\par
+\tab\tab elif mp == win.nodemenu:\par
+\tab\tab\tab topic, ref = win.menu[item]\par
+\tab\tab\tab imove(win, ref)\par
+\tab\tab elif mp == win.footmenu:\par
+\tab\tab\tab topic, ref = win.footnotes[item]\par
+\tab\tab\tab imove(win, ref)\par
+\tab\tab return\par
+\tab if type == WE_SIZE:\par
+\tab\tab win.textobj.move((0, 0), win.getwinsize())\par
+\tab\tab (left, top), (right, bottom) = win.textobj.getrect()\par
+\tab\tab win.setdocsize(0, bottom)\par
+\tab\tab return\par
+\tab if type == WE_CLOSE:\par
+\tab\tab iclose(win)\par
+\tab\tab return\par
+\tab if not win.textobj.event(event):\par
+\tab\tab pass\par
+\par
+\par
+# Paging callbacks\par
+\par
+def ibeginning(win):\par
+\tab win.setorigin(0, 0)\par
+\tab win.textobj.setfocus(0, 0) # To restart searches\par
+\par
+def iforward(win):\par
+\tab lh = stdwin.lineheight() # XXX Should really use the window's...\par
+\tab h, v = win.getorigin()\par
+\tab docwidth, docheight = win.getdocsize()\par
+\tab width, height = win.getwinsize()\par
+\tab if v + height >= docheight:\par
+\tab\tab stdwin.fleep()\par
+\tab\tab return\par
+\tab increment = max(lh, ((height - 2*lh) / lh) * lh)\par
+\tab v = v + increment\par
+\tab win.setorigin(h, v)\par
+\par
+def ibackward(win):\par
+\tab lh = stdwin.lineheight() # XXX Should really use the window's...\par
+\tab h, v = win.getorigin()\par
+\tab if v <= 0:\par
+\tab\tab stdwin.fleep()\par
+\tab\tab return\par
+\tab width, height = win.getwinsize()\par
+\tab increment = max(lh, ((height - 2*lh) / lh) * lh)\par
+\tab v = max(0, v - increment)\par
+\tab win.setorigin(h, v)\par
+\par
+\par
+# Ibrowse menu callbacks\par
+\par
+def iclone(win):\par
+\tab stdwin.setdefwinsize(win.getwinsize())\par
+\tab makewindow(win.file, win.node)\par
+\par
+def itutor(win):\par
+\tab # The course looks best at 76x22...\par
+\tab stdwin.setdefwinsize(76*stdwin.textwidth('x'), 22*stdwin.lineheight())\par
+\tab makewindow('ibrowse', 'Help')\par
+\par
+def isummary(win):\par
+\tab stdwin.setdefwinsize(76*stdwin.textwidth('x'), 22*stdwin.lineheight())\par
+\tab makewindow('ibrowse', 'Summary')\par
+\par
+def iclose(win):\par
+\tab #\par
+\tab # Remove the window from the windows list so the mainloop\par
+\tab # will notice if all windows are gone.\par
+\tab # Delete the textobj since it constitutes a circular reference\par
+\tab # to the window which would prevent it from being closed.\par
+\tab # (Deletion is done by assigning None to avoid crashes\par
+\tab # when closing a half-initialized window.)\par
+\tab #\par
+\tab if win in windows:\par
+\tab\tab windows.remove(win)\par
+\tab win.textobj = None\par
+\par
+def icopy(win):\par
+\tab focustext = win.textobj.getfocustext()\par
+\tab if not focustext:\par
+\tab\tab stdwin.fleep()\par
+\tab else:\par
+\tab\tab stdwin.rotatecutbuffers(1)\par
+\tab\tab stdwin.setcutbuffer(0, focustext)\par
+\tab\tab # XXX Should also set the primary selection...\par
+\par
+def isearch(win):\par
+\tab try:\par
+\tab\tab pat = stdwin.askstr('Search pattern:', win.pat)\par
+\tab except KeyboardInterrupt:\par
+\tab\tab return\par
+\tab if not pat:\par
+\tab\tab pat = win.pat\par
+\tab\tab if not pat:\par
+\tab\tab\tab stdwin.message('No previous pattern')\par
+\tab\tab\tab return\par
+\tab try:\par
+\tab\tab cpat = regexp.compile(pat)\par
+\tab except regexp.error, msg:\par
+\tab\tab stdwin.message('Bad pattern: ' + msg)\par
+\tab\tab return\par
+\tab win.pat = pat\par
+\tab f1, f2 = win.textobj.getfocus()\par
+\tab text = win.text\par
+\tab match = cpat.match(text, f2)\par
+\tab if not match:\par
+\tab\tab stdwin.fleep()\par
+\tab\tab return\par
+\tab a, b = match[0]\par
+\tab win.textobj.setfocus(a, b)\par
+\par
+\par
+def iresetnodecache(win):\par
+\tab icache.resetnodecache()\par
+\par
+def iresetcache(win):\par
+\tab icache.resetcache()\par
+\par
+def iquit(win):\par
+\tab for win in windows[:]:\par
+\tab\tab iclose(win)\par
+\par
+\par
+# Navigation menu callbacks\par
+\par
+def imenu(win):\par
+\tab ichoice(win, 'Menu item (abbreviated):', win.menu, whichmenuitem(win))\par
+\par
+def ifollow(win):\par
+\tab ichoice(win, 'Follow reference named (abbreviated):', \\\par
+\tab\tab win.footnotes, whichfootnote(win))\par
+\par
+def igoto(win):\par
+\tab try:\par
+\tab\tab choice = stdwin.askstr('Go to node (full name):', '')\par
+\tab except KeyboardInterrupt:\par
+\tab\tab return\par
+\tab if not choice:\par
+\tab\tab stdwin.message('Sorry, Go to has no default')\par
+\tab\tab return\par
+\tab imove(win, choice)\par
+\par
+def inext(win):\par
+\tab prev, next, up = win.header\par
+\tab if next:\par
+\tab\tab imove(win, next)\par
+\tab else:\par
+\tab\tab stdwin.fleep()\par
+\par
+def iprev(win):\par
+\tab prev, next, up = win.header\par
+\tab if prev:\par
+\tab\tab imove(win, prev)\par
+\tab else:\par
+\tab\tab stdwin.fleep()\par
+\par
+def iup(win):\par
+\tab prev, next, up = win.header\par
+\tab if up:\par
+\tab\tab imove(win, up)\par
+\tab else:\par
+\tab\tab stdwin.fleep()\par
+\par
+def ilast(win):\par
+\tab if not win.last:\par
+\tab\tab stdwin.fleep()\par
+\tab else:\par
+\tab\tab i = len(win.last)-1\par
+\tab\tab lastnode, lastfocus = win.last[i]\par
+\tab\tab imove(win, lastnode)\par
+\tab\tab if len(win.last) > i+1:\par
+\tab\tab\tab # The move succeeded -- restore the focus\par
+\tab\tab\tab win.textobj.setfocus(lastfocus)\par
+\tab\tab # Delete the stack top even if the move failed,\par
+\tab\tab # else the whole stack would remain unreachable\par
+\tab\tab del win.last[i:] # Delete the entry pushed by imove as well!\par
+\par
+def itop(win):\par
+\tab imove(win, '')\par
+\par
+def idir(win):\par
+\tab imove(win, '(dir)')\par
+\par
+\par
+# Special and generic callbacks\par
+\par
+def idown(win):\par
+\tab if win.menu:\par
+\tab\tab default = whichmenuitem(win)\par
+\tab\tab for topic, ref in win.menu:\par
+\tab\tab\tab if default == topic:\par
+\tab\tab\tab\tab break\par
+\tab\tab else:\par
+\tab\tab\tab topic, ref = win.menu[0]\par
+\tab\tab imove(win, ref)\par
+\tab else:\par
+\tab\tab inext(win)\par
+\par
+def ichoice(win, prompt, list, default):\par
+\tab if not list:\par
+\tab\tab stdwin.fleep()\par
+\tab\tab return\par
+\tab if not default:\par
+\tab\tab topic, ref = list[0]\par
+\tab\tab default = topic\par
+\tab try:\par
+\tab\tab choice = stdwin.askstr(prompt, default)\par
+\tab except KeyboardInterrupt:\par
+\tab\tab return\par
+\tab if not choice:\par
+\tab\tab return\par
+\tab choice = string.lower(choice)\par
+\tab n = len(choice)\par
+\tab for topic, ref in list:\par
+\tab\tab topic = string.lower(topic)\par
+\tab\tab if topic[:n] == choice:\par
+\tab\tab\tab imove(win, ref)\par
+\tab\tab\tab return\par
+\tab stdwin.message('Sorry, no topic matches ' + `choice`)\par
+\par
+\par
+# Follow a reference, in the same window.\par
+#\par
+def imove(win, ref):\par
+\tab savetitle = win.gettitle()\par
+\tab win.settitle('Looking for ' + ref + '...')\par
+\tab #\par
+\tab try:\par
+\tab\tab file, node, header, menu, footnotes, text = \\\par
+\tab\tab\tab icache.get_node(win.file, ref)\par
+\tab except NoSuchFile, file:\par
+\tab\tab win.settitle(savetitle)\par
+\tab\tab stdwin.message(\\\par
+\tab\tab 'Sorry, I can\\'t find a file named ' + `file` + '.')\par
+\tab\tab return\par
+\tab except NoSuchNode, node:\par
+\tab\tab win.settitle(savetitle)\par
+\tab\tab stdwin.message(\\\par
+\tab\tab 'Sorry, I can\\'t find a node named ' + `node` + '.')\par
+\tab\tab return\par
+\tab #\par
+\tab win.settitle('Found (' + file + ')' + node + '...')\par
+\tab #\par
+\tab if win.file and win.node:\par
+\tab\tab lastnode = '(' + win.file + ')' + win.node\par
+\tab\tab win.last.append(lastnode, win.textobj.getfocus())\par
+\tab win.file = file\par
+\tab win.node = node\par
+\tab win.header = header\par
+\tab win.menu = menu\par
+\tab win.footnotes = footnotes\par
+\tab win.text = text\par
+\tab #\par
+\tab win.setorigin(0, 0) # Scroll to the beginnning\par
+\tab win.textobj.settext(text)\par
+\tab win.textobj.setfocus(0, 0)\par
+\tab (left, top), (right, bottom) = win.textobj.getrect()\par
+\tab win.setdocsize(0, bottom)\par
+\tab #\par
+\tab if win.footmenu: win.footmenu.close()\par
+\tab if win.nodemenu: win.nodemenu.close()\par
+\tab win.footmenu = None\par
+\tab win.nodemenu = None\par
+\tab #\par
+\tab win.menu = menu\par
+\tab if menu:\par
+\tab\tab win.nodemenu = win.menucreate('Menu')\par
+\tab\tab digit = 1\par
+\tab\tab for topic, ref in menu:\par
+\tab\tab\tab if digit < 10:\par
+\tab\tab\tab\tab win.nodemenu.additem(topic, `digit`)\par
+\tab\tab\tab else:\par
+\tab\tab\tab\tab win.nodemenu.additem(topic)\par
+\tab\tab\tab digit = digit + 1\par
+\tab #\par
+\tab win.footnotes = footnotes\par
+\tab if footnotes:\par
+\tab\tab win.footmenu = win.menucreate('Footnotes')\par
+\tab\tab for topic, ref in footnotes:\par
+\tab\tab\tab win.footmenu.additem(topic)\par
+\tab #\par
+\tab win.settitle('(' + win.file + ')' + win.node)\par
+\par
+\par
+# Find menu item at focus\par
+#\par
+findmenu = regexp.compile('^\\* [mM]enu:').match\par
+findmenuitem = regexp.compile( \\\par
+\tab '^\\* ([^:]+):[ \\t]*(:|\\([^\\t]*\\)[^\\t,\\n.]*|[^:(][^\\t,\\n.]*)').match\par
+#\par
+def whichmenuitem(win):\par
+\tab if not win.menu:\par
+\tab\tab return ''\par
+\tab match = findmenu(win.text)\par
+\tab if not match:\par
+\tab\tab return ''\par
+\tab a, b = match[0]\par
+\tab i = b\par
+\tab f1, f2 = win.textobj.getfocus()\par
+\tab lastmatch = ''\par
+\tab while i < len(win.text):\par
+\tab\tab match = findmenuitem(win.text, i)\par
+\tab\tab if not match:\par
+\tab\tab\tab break\par
+\tab\tab (a, b), (a1, b1), (a2, b2) = match\par
+\tab\tab if a > f1:\par
+\tab\tab\tab break\par
+\tab\tab lastmatch = win.text[a1:b1]\par
+\tab\tab i = b\par
+\tab return lastmatch\par
+\par
+\par
+# Find footnote at focus\par
+#\par
+findfootnote = \\\par
+\tab regexp.compile('\\*[nN]ote ([^:]+):[ \\t]*(:|[^:][^\\t,\\n.]*)').match\par
+#\par
+def whichfootnote(win):\par
+\tab if not win.footnotes:\par
+\tab\tab return ''\par
+\tab i = 0\par
+\tab f1, f2 = win.textobj.getfocus()\par
+\tab lastmatch = ''\par
+\tab while i < len(win.text):\par
+\tab\tab match = findfootnote(win.text, i)\par
+\tab\tab if not match:\par
+\tab\tab\tab break\par
+\tab\tab (a, b), (a1, b1), (a2, b2) = match\par
+\tab\tab if a > f1:\par
+\tab\tab\tab break\par
+\tab\tab lastmatch = win.text[a1:b1]\par
+\tab\tab i = b\par
+\tab return lastmatch\par
+\par
+\par
+# Now all the "methods" are defined, we can initialize the table\par
+# of key bindings.\par
+#\par
+keybindings = \{\}\par
+\par
+# Window commands\par
+\par
+keybindings['k'] = iclone\par
+keybindings['h'] = itutor\par
+keybindings['?'] = isummary\par
+keybindings['w'] = iclose\par
+\par
+keybindings['c'] = icopy\par
+\par
+keybindings['s'] = isearch\par
+\par
+keybindings['q'] = iquit\par
+\par
+# Navigation commands\par
+\par
+keybindings['m'] = imenu\par
+keybindings['f'] = ifollow\par
+keybindings['g'] = igoto\par
+\par
+keybindings['n'] = inext\par
+keybindings['p'] = iprev\par
+keybindings['u'] = iup\par
+keybindings['l'] = ilast\par
+keybindings['d'] = idir\par
+keybindings['t'] = itop\par
+\par
+# Paging commands\par
+\par
+keybindings['b'] = ibeginning\par
+keybindings['.'] = ibeginning\par
+keybindings[' '] = iforward\par
+\par
+\par
+}
+ 

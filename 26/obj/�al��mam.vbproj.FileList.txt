@@ -1,0 +1,16 @@
+bin\Debug\çalışmam.exe.config
+obj\Debug\çalışmam.xml
+obj\Debug\çalışmam.pdb
+bin\Debug\çalışmam.exe
+obj\Debug\ResolveAssemblyReference.cache
+obj\Debug\WindowsApplication4.Form1.resources
+obj\Debug\WindowsApplication4.Form2.resources
+obj\Debug\WindowsApplication4.Resources.resources
+obj\Debug\çalışmam.vbproj.GenerateResource.Cache
+obj\Debug\çalışmam.exe
+bin\Debug\çalışmam.pdb
+bin\Debug\çalışmam.xml
+obj\Debug\WindowsApplication4.ekle.resources
+obj\Debug\WindowsApplication4.goster.resources
+obj\Debug\WindowsApplication4.sil.resources
+obj\Debug\WindowsApplication4.duzenle.resources

@@ -1,0 +1,742 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset162 Microsoft Sans Serif;}}
+\viewkind4\uc1\pard\lang1055\f0\fs17\par
+#! /usr/bin/env python\par
+\par
+# "M Clock"\par
+#\par
+# An implementation in software of an original design by Rob Juda.\par
+# Clock implementation: Guido van Rossum.\par
+# Alarm and Gong features: Sape Mullender.\par
+#\par
+# XXX TO DO:\par
+# add arguments to specify initial window position and size\par
+# find out local time zone difference automatically\par
+# add a date indicator\par
+# allow multiple alarms\par
+# allow the menu to change more parameters\par
+\par
+import sys\par
+\par
+from gl import *\par
+from GL import *\par
+from DEVICE import *\par
+import time\par
+import getopt\par
+import string\par
+import os\par
+from math import pi\par
+import math\par
+\par
+FULLC = 3600\tab\tab # Full circle in 1/10-ths of a degree\par
+MIDN = 900\tab\tab # Angle of the 12 o'clock position\par
+R, G, B = 0, 1, 2\tab # Indices of colors in RGB list\par
+\par
+HOUR = 3600\tab\tab # Number of seconds per hour\par
+MINUTE = 60\tab\tab # Number of seconds per minute\par
+\par
+class struct: pass\tab # Class to define featureless structures\par
+Gl = struct()\tab\tab # Object to hold writable global variables\par
+\par
+# Default constants (used in multiple places)\par
+\par
+SCREENBG = 127, 156, 191\par
+NPARTS = 9\par
+TITLE = 'M Clock'\par
+\par
+# Set timezone, check for daylight saving time\par
+TZDIFF = time.timezone\par
+if time.localtime(time.time())[-1]:\par
+\tab TZDIFF = time.altzone\par
+\par
+# Default parameters\par
+\par
+Gl.foreground = 0\tab # If set, run in the foreground\par
+Gl.fullscreen = 0\tab # If set, run on full screen\par
+Gl.tzdiff = TZDIFF\tab # Seconds west of Greenwich (winter time)\par
+Gl.nparts = NPARTS\tab # Number of parts each circle is divided in (>= 2)\par
+Gl.debug = 0\tab\tab # If set, print debug output\par
+Gl.doublebuffer = 1\tab # If set, use double buffering\par
+Gl.update = 0\tab\tab # Update interval; seconds hand is suppressed if > 1\par
+Gl.colorsubset = 0\tab # If set, display only a subset of the colors\par
+Gl.cyan = 0\tab\tab # If set, display cyan overlay (big hand)\par
+Gl.magenta = 0\tab\tab # If set, display magenta overlay (little hand)\par
+Gl.yellow = 0\tab\tab # If set, display yellow overlay (fixed background)\par
+Gl.black = 0\tab\tab # If set, display black overlay (hands)\par
+Gl.colormap = 0\tab\tab # If set, use colormap mode instead of RGB mode\par
+Gl.warnings = 0\tab\tab # If set, print warnings\par
+Gl.title = ''\tab\tab # Window title (default set later)\par
+Gl.name = 'mclock'\tab # Window title for resources\par
+Gl.border = 1\tab\tab # If set, use a window border (and title)\par
+Gl.bg = 0, 0, 0\tab\tab # Background color R, G, B value\par
+Gl.iconic = 0\tab\tab # Set in iconic state\par
+Gl.fg = 255, 0, 0\tab # Alarm background RGB (either normal or alarm)\par
+Gl.ox,Gl.oy = 0,0\tab # Window origin\par
+Gl.cx,Gl.cy = 0,0\tab # Window size\par
+Gl.alarm_set = 0\tab # Alarm on or off\par
+Gl.alarm_on = 0\tab\tab # Alarm is ringing\par
+Gl.alarm_time = 0\tab # Alarm time in seconds after midnight\par
+Gl.alarm_hours = 0\tab # Alarm hour setting, 24 hour clock\par
+Gl.alarm_minutes = 0\tab # Alarm minutes setting\par
+Gl.alarm_rgb = 0,0,0\tab # Alarm display RGB colors\par
+Gl.alarm_cmd = ''\tab # Command to execute when alarm goes off\par
+Gl.mouse2down = 0\tab # Mouse button state\par
+Gl.mouse3down = 0\tab # Mouse button state\par
+Gl.gong_cmd = ''\tab # Command to execute when chimes go off\par
+Gl.gong_int = 3600\tab # Gong interval\par
+Gl.indices = R, G, B\tab # Colors (permuted when alarm is on)\par
+\par
+def main():\par
+\tab #\par
+\tab sys.stdout = sys.stderr\tab\tab # All output is errors/warnings etc.\par
+\tab #\par
+\tab try:\par
+\tab\tab args = getoptions()\par
+\tab except string.atoi_error, value:\par
+\tab\tab usage(string.atoi_error, value)\par
+\tab except getopt.error, msg:\par
+\tab\tab usage(getopt.error, msg)\par
+\tab #\par
+\tab if args:\par
+\tab\tab realtime = 0\par
+\tab\tab hours = string.atoi(args[0])\par
+\tab\tab minutes = seconds = 0\par
+\tab\tab if args[1:]: minutes = string.atoi(args[1])\par
+\tab\tab if args[2:]: seconds = string.atoi(args[2])\par
+\tab\tab localtime = ((hours*60)+minutes)*60+seconds\par
+\tab else:\par
+\tab\tab realtime = 1\par
+\tab #\par
+\tab if Gl.title == '':\par
+\tab\tab if realtime:\par
+\tab\tab\tab Gl.title = TITLE\par
+\tab\tab else:\par
+\tab\tab\tab title = ''\par
+\tab\tab\tab for arg in args: title = title + ' ' + arg\par
+\tab\tab\tab Gl.title = title[1:]\par
+\tab\tab\tab del title\par
+\tab #\par
+\tab wid = makewindow()\par
+\tab Gl.ox,Gl.oy = getorigin()\par
+\tab Gl.cx,Gl.cy = getsize()\par
+\tab initmenu()\par
+\tab clearall()\par
+\tab #\par
+\tab if not Gl.update:\par
+\tab\tab Gl.update = 60\par
+\tab #\par
+\tab if Gl.update <= 1:\par
+\tab\tab Gl.timernoise = 6\par
+\tab else:\par
+\tab\tab Gl.timernoise = 60\par
+\tab noise(TIMER0, Gl.timernoise)\par
+\tab #\par
+\tab qdevice(WINSHUT)\par
+\tab qdevice(WINQUIT)\par
+\tab qdevice(ESCKEY)\par
+\tab if realtime:\par
+\tab\tab qdevice(TIMER0)\par
+\tab qdevice(REDRAW)\par
+\tab qdevice(WINFREEZE)\par
+\tab qdevice(WINTHAW)\par
+\tab qdevice(MENUBUTTON)\tab # MOUSE1\par
+\tab qdevice(MOUSE3)\tab\tab # Left button\par
+\tab qdevice(MOUSE2)\tab\tab # Middle button\par
+\tab unqdevice(INPUTCHANGE)\par
+\tab #\par
+\tab lasttime = 0\par
+\tab Gl.change = 1\par
+\tab while 1:\par
+\tab\tab if realtime:\par
+\tab\tab\tab localtime = int(time.time() - Gl.tzdiff)\par
+\tab\tab if Gl.alarm_set:\par
+\tab\tab\tab if localtime%(24*HOUR) == Gl.alarm_time:\par
+\tab\tab\tab\tab # Ring the alarm!\par
+\tab\tab\tab\tab if Gl.debug:\par
+\tab\tab\tab\tab\tab print 'Rrrringg!'\par
+\tab\tab\tab\tab Gl.alarm_on = 1\par
+\tab\tab\tab\tab if Gl.alarm_cmd <> '':\par
+\tab\tab\tab\tab\tab d = os.system(Gl.alarm_cmd+' '+`Gl.alarm_time/3600`+' '+`(Gl.alarm_time/60)%60` + ' &')\par
+\tab\tab\tab\tab Gl.change = 1\par
+\tab\tab\tab\tab clearall()\par
+\tab\tab if Gl.alarm_on:\par
+\tab\tab\tab if (localtime - Gl.alarm_time) % (24*HOUR) > 300:\par
+\tab\tab\tab\tab # More than 5 minutes away from alarm\par
+\tab\tab\tab\tab Gl.alarm_on = 0\par
+\tab\tab\tab\tab if Gl.debug:\par
+\tab\tab\tab\tab\tab print 'Alarm turned off'\par
+\tab\tab\tab\tab Gl.change = 1\par
+\tab\tab\tab\tab clearall()\par
+\tab\tab\tab\tab Gl.indices = R, G, B\par
+\tab\tab\tab else:\par
+\tab\tab\tab\tab if localtime % 2 == 0:\par
+\tab\tab\tab\tab   # Permute color indices\par
+\tab\tab\tab\tab   Gl.indices = Gl.indices[2:] + Gl.indices[:2]\par
+\tab\tab\tab\tab   Gl.change = 1\par
+\tab\tab if Gl.gong_cmd <> '' and localtime%Gl.gong_int == 0:\par
+\tab\tab\tab d = os.system(Gl.gong_cmd+' '+`(localtime/3600)%24`+' '+`(localtime/60)%60` + ' &')\par
+\tab\tab if localtime/Gl.update <> lasttime/Gl.update:\par
+\tab\tab\tab if Gl.debug: print 'new time'\par
+\tab\tab\tab Gl.change = 1\par
+\tab\tab if Gl.change:\par
+\tab\tab\tab if Gl.debug: print 'drawing'\par
+\tab\tab\tab doit(localtime)\par
+\tab\tab\tab lasttime = localtime\par
+\tab\tab\tab Gl.change = 0\par
+\tab\tab dev, data = qread()\par
+\tab\tab if Gl.debug and dev <> TIMER0:\par
+\tab\tab\tab print dev, data\par
+\tab\tab if dev == TIMER0:\par
+\tab\tab\tab if Gl.debug > 1:\par
+\tab\tab\tab\tab print dev, data\par
+\tab\tab elif dev == MOUSE3:\par
+\tab\tab\tab mousex = getvaluator(MOUSEX)\par
+\tab\tab\tab mousey = getvaluator(MOUSEY)\par
+\tab\tab\tab if mouseclick(3, data, mousex, mousey):\par
+\tab\tab\tab\tab Gl.change = 1\par
+\tab\tab elif dev == MOUSE2:\par
+\tab\tab\tab mousex = getvaluator(MOUSEX)\par
+\tab\tab\tab mousey = getvaluator(MOUSEY)\par
+\tab\tab\tab if mouseclick(2, data, mousex, mousey):\par
+\tab\tab\tab\tab Gl.change = 1\par
+\tab\tab elif dev == MOUSEX:\par
+\tab\tab\tab mousex = data\par
+\tab\tab\tab if Gl.mouse2down:\par
+\tab\tab\tab\tab mouse2track(mousex, mousey)\par
+\tab\tab\tab if Gl.mouse3down:\par
+\tab\tab\tab\tab mouse3track(mousex, mousey)\par
+\tab\tab elif dev == MOUSEY:\par
+\tab\tab\tab mousey = data\par
+\tab\tab\tab if Gl.mouse2down:\par
+\tab\tab\tab\tab mouse2track(mousex, mousey)\par
+\tab\tab\tab if Gl.mouse3down:\par
+\tab\tab\tab\tab mouse3track(mousex, mousey)\par
+\tab\tab elif dev == REDRAW or dev == REDRAWICONIC:\par
+\tab\tab\tab if Gl.debug:\par
+\tab\tab\tab\tab if dev == REDRAW: print 'REDRAW'\par
+\tab\tab\tab\tab else: print 'REDRAWICONIC'\par
+\tab\tab\tab reshapeviewport()\par
+\tab\tab\tab Gl.ox,Gl.oy = getorigin()\par
+\tab\tab\tab Gl.cx,Gl.cy = getsize()\par
+\tab\tab\tab Gl.change = 1\par
+\tab\tab\tab clearall()\par
+\tab\tab elif dev == MENUBUTTON:\par
+\tab\tab\tab if Gl.debug: print 'MENUBUTTON'\par
+\tab\tab\tab handlemenu()\par
+\tab\tab elif dev == WINFREEZE:\par
+\tab\tab\tab if Gl.debug: print 'WINFREEZE'\par
+\tab\tab\tab Gl.iconic = 1\par
+\tab\tab\tab noise(TIMER0, 60*60) # Redraw every 60 seconds only\par
+\tab\tab elif dev == WINTHAW:\par
+\tab\tab\tab if Gl.debug: print 'WINTHAW'\par
+\tab\tab\tab Gl.iconic = 0\par
+\tab\tab\tab noise(TIMER0, Gl.timernoise)\par
+\tab\tab\tab Gl.change = 1\par
+\tab\tab elif dev == ESCKEY or dev == WINSHUT or dev == WINQUIT:\par
+\tab\tab\tab if Gl.debug: print 'Exit'\par
+\tab\tab\tab sys.exit(0)\par
+\par
+def getoptions():\par
+\tab optlist, args = getopt.getopt(sys.argv[1:], 'A:a:B:bc:dFfG:g:n:sT:t:u:wCMYK')\par
+\tab for optname, optarg in optlist:\par
+\tab\tab if optname == '-A':\par
+\tab\tab\tab Gl.fg = eval(optarg)\tab # Should be (r,g,b)\par
+\tab\tab elif optname == '-a':\par
+\tab\tab\tab Gl.alarm_cmd = optarg\par
+\tab\tab elif optname == '-B':\par
+\tab\tab\tab Gl.bg = eval(optarg)\tab # Should be (r,g,b)\par
+\tab\tab elif optname == '-b':\par
+\tab\tab\tab Gl.border = 0\par
+\tab\tab elif optname == '-c':\par
+\tab\tab\tab Gl.colormap = string.atoi(optarg)\par
+\tab\tab elif optname == '-d':\par
+\tab\tab\tab Gl.debug = Gl.debug + 1\par
+\tab\tab\tab Gl.warnings = 1\par
+\tab\tab elif optname == '-F':\par
+\tab\tab\tab Gl.foreground = 1\par
+\tab\tab elif optname == '-f':\par
+\tab\tab\tab Gl.fullscreen = 1\par
+\tab\tab elif optname == '-G':\par
+\tab\tab\tab Gl.gong_int = 60*string.atoi(optarg)\par
+\tab\tab elif optname == '-g':\par
+\tab\tab\tab Gl.gong_cmd = optarg\par
+\tab\tab elif optname == '-n':\par
+\tab\tab\tab Gl.nparts = string.atoi(optarg)\par
+\tab\tab elif optname == '-s':\par
+\tab\tab\tab Gl.doublebuffer = 0\par
+\tab\tab elif optname == '-T':\par
+\tab\tab\tab Gl.title = Gl.name = optarg\par
+\tab\tab elif optname == '-t':\par
+\tab\tab\tab Gl.tzdiff = string.atoi(optarg)\par
+\tab\tab elif optname == '-u':\par
+\tab\tab\tab Gl.update = string.atoi(optarg)\par
+\tab\tab elif optname == '-w':\par
+\tab\tab\tab Gl.warnings = 1\par
+\tab\tab elif optname == '-C':\par
+\tab\tab\tab Gl.cyan = Gl.colorsubset = 1\par
+\tab\tab elif optname == '-M':\par
+\tab\tab\tab Gl.magenta = Gl.colorsubset = 1\par
+\tab\tab elif optname == '-Y':\par
+\tab\tab\tab Gl.yellow = Gl.colorsubset = 1\par
+\tab\tab elif optname == '-K':\par
+\tab\tab\tab Gl.black = Gl.colorsubset = 1\par
+\tab\tab else:\par
+\tab\tab\tab print 'Unsupported option', optname\par
+\tab return args\par
+\par
+def usage(exc, msg):\par
+\tab if sys.argv:\par
+\tab\tab progname = os.path.basename(sys.argv[0])\par
+\tab else:\par
+\tab\tab progname = 'mclock'\par
+\tab #\par
+\tab print progname + ':',\par
+\tab if exc == string.atoi_error:\par
+\tab\tab print 'non-numeric argument:',\par
+\tab print msg\par
+\tab #\par
+\tab print 'usage:', progname, '[options] [hh [mm [ss]]]'\par
+\tab #\par
+\tab print '-A r,g,b  : alarm background red,green,blue [255,0,0]'\par
+\tab print '-a cmd    : shell command executed when alarm goes off'\par
+\tab print '-B r,g,b  : background red,green,blue [0,0,0]'\par
+\tab print '            (-B SCREENBG uses the default screen background)'\par
+\tab print '-b        : suppress window border and title'\par
+\tab print '-c cmapid : select explicit colormap'\par
+\tab print '-d        : more debug output (implies -F, -w)'\par
+\tab print '-F        : run in foreground'\par
+\tab print '-f        : use full screen'\par
+\tab print '-G intrvl : interval between chimes in minutes [60]'\par
+\tab print '-g cmd    : shell command executed when chimes go off'\par
+\tab print '-s        : single buffer mode'\par
+\tab print '-w        : print various warnings'\par
+\tab print '-n nparts : number of parts [' + `NPARTS` + ']'\par
+\tab print '-T title  : alternate window title [\\'' + TITLE + '\\']'\par
+\tab print '-t tzdiff : time zone difference [' + `TZDIFF` + ']'\par
+\tab print '-u update : update interval [60]'\par
+\tab print '-CMYK     : Cyan, Magenta, Yellow or blacK overlay only'\par
+\tab print 'if hh [mm [ss]] is specified, display that time statically'\par
+\tab print 'on machines with < 12 bitplanes, -s is forced on'\par
+\tab #\par
+\tab sys.exit(2)\par
+\par
+def doit(localtime):\par
+\tab hands = makehands(localtime)\par
+\tab list = makelist(hands)\par
+\tab render(list, hands)\par
+\par
+def makehands(localtime):\par
+\tab localtime = localtime % (12*HOUR)\par
+\tab seconds_hand = MIDN + FULLC - (localtime*60) % FULLC\par
+\tab big_hand = (MIDN + FULLC - (localtime%HOUR)) % FULLC\par
+\tab little_hand = (MIDN + FULLC - ((localtime/12) % HOUR)) % FULLC\par
+\tab return little_hand, big_hand, seconds_hand\par
+\par
+def makelist(hands):\par
+\tab little_hand, big_hand, seconds_hand = hands\par
+\tab total = []\par
+\tab if Gl.cyan or not Gl.colorsubset:\par
+\tab\tab total = total + makesublist(big_hand, Gl.indices[0])\par
+\tab if Gl.magenta or not Gl.colorsubset:\par
+\tab\tab total = total + makesublist(little_hand, Gl.indices[1])\par
+\tab if Gl.yellow or not Gl.colorsubset:\par
+\tab\tab total = total + makesublist(MIDN, Gl.indices[2])\par
+\tab total.sort()\par
+\tab return total\par
+\par
+def makesublist(first, icolor):\par
+\tab list = []\par
+\tab alpha = FULLC/Gl.nparts\par
+\tab a = first - alpha/2\par
+\tab for i in range(Gl.nparts):\par
+\tab\tab angle = (a + i*alpha + FULLC) % FULLC\par
+\tab\tab value = 255*(Gl.nparts-1-i)/(Gl.nparts-1)\par
+\tab\tab list.append((angle, icolor, value))\par
+\tab list.sort()\par
+\tab a, icolor, value = list[0]\par
+\tab if a <> 0:\par
+\tab\tab a, icolor, value = list[len(list)-1]\par
+\tab\tab t = 0, icolor, value\par
+\tab\tab list.insert(0, t)\par
+\tab return list\par
+\par
+def rgb_fg():\par
+\tab return Gl.fg\par
+\tab # Obsolete code:\par
+\tab if Gl.alarm_on:\par
+\tab\tab return Gl.bg\par
+\tab else:\par
+\tab\tab return Gl.fg\par
+\par
+def rgb_bg():\par
+\tab return Gl.bg\par
+\tab # Obsolete code:\par
+\tab if Gl.alarm_on:\par
+\tab\tab return Gl.fg\par
+\tab else:\par
+\tab\tab return Gl.bg\par
+\par
+def clearall():\par
+\tab Gl.c3i(rgb_bg())\par
+\tab clear()\par
+\tab if Gl.doublebuffer:\par
+\tab\tab swapbuffers()\par
+\tab\tab clear()\par
+\par
+def draw_alarm(color):\par
+\tab frontbuffer(TRUE)\par
+\tab Gl.c3i(color)\par
+\tab pushmatrix()\par
+\tab rotate(-((Gl.alarm_time/12)%3600), 'z')\par
+\tab bgnpolygon()\par
+\tab v2f( 0.00,1.00)\par
+\tab v2f( 0.04,1.05)\par
+\tab v2f(-0.04,1.05)\par
+\tab endpolygon()\par
+\tab popmatrix()\par
+\tab #\par
+\tab pushmatrix()\par
+\tab rotate(-((Gl.alarm_time)%3600), 'z')\par
+\tab bgnpolygon()\par
+\tab v2f( 0.00,1.05)\par
+\tab v2f( 0.07,1.10)\par
+\tab v2f(-0.07,1.10)\par
+\tab endpolygon()\par
+\tab popmatrix()\par
+\tab #\par
+\tab cmov2(-1.06, -1.06)\par
+\tab charstr(string.rjust(`Gl.alarm_time/3600`,2))\par
+\tab charstr(':')\par
+\tab charstr(string.zfill((Gl.alarm_time/60)%60,2))\par
+\tab frontbuffer(FALSE)\par
+\par
+def render(list, (little_hand, big_hand, seconds_hand)):\par
+\tab #\par
+\tab if Gl.colormap:\par
+\tab\tab resetindex()\par
+\tab #\par
+\tab if not list:\par
+\tab\tab Gl.c3i((255, 255, 255)) # White\par
+\tab\tab circf(0.0, 0.0, 1.0)\par
+\tab else:\par
+\tab\tab list.append((3600, 0, 255)) # Sentinel\par
+\tab #\par
+\tab rgb = [255, 255, 255]\par
+\tab a_prev = 0\par
+\tab for a, icolor, value in list:\par
+\tab\tab if a <> a_prev:\par
+\tab\tab\tab [r, g, b] = rgb\par
+\tab\tab\tab if Gl.debug > 1:\par
+\tab\tab\tab\tab print rgb, a_prev, a\par
+\tab\tab\tab Gl.c3i((r, g, b))\par
+\tab\tab\tab arcf(0.0, 0.0, 1.0, a_prev, a)\par
+\tab\tab rgb[icolor] = value\par
+\tab\tab a_prev = a\par
+\tab #\par
+\tab if Gl.black or not Gl.colorsubset:\par
+\tab\tab #\par
+\tab\tab # Draw the hands -- in black\par
+\tab\tab #\par
+\tab\tab Gl.c3i((0, 0, 0))\par
+\tab\tab #\par
+\tab\tab if Gl.update == 1 and not Gl.iconic:\par
+\tab\tab\tab # Seconds hand is only drawn if we update every second\par
+\tab\tab\tab pushmatrix()\par
+\tab\tab\tab rotate(seconds_hand, 'z')\par
+\tab\tab\tab bgnline()\par
+\tab\tab\tab v2f(0.0, 0.0)\par
+\tab\tab\tab v2f(1.0, 0.0)\par
+\tab\tab\tab endline()\par
+\tab\tab\tab popmatrix()\par
+\tab\tab #\par
+\tab\tab pushmatrix()\par
+\tab\tab rotate(big_hand, 'z')\par
+\tab\tab rectf(0.0, -0.01, 0.97, 0.01)\par
+\tab\tab circf(0.0, 0.0, 0.01)\par
+\tab\tab circf(0.97, 0.0, 0.01)\par
+\tab\tab popmatrix()\par
+\tab\tab #\par
+\tab\tab pushmatrix()\par
+\tab\tab rotate(little_hand, 'z')\par
+\tab\tab rectf(0.04, -0.02, 0.63, 0.02)\par
+\tab\tab circf(0.04, 0.0, 0.02)\par
+\tab\tab circf(0.63, 0.0, 0.02)\par
+\tab\tab popmatrix()\par
+\tab\tab #\par
+\tab\tab # Draw the alarm time, if set or being set\par
+\tab\tab #\par
+\tab\tab if Gl.alarm_set:\par
+\tab\tab\tab draw_alarm(rgb_fg())\par
+\tab #\par
+\tab if Gl.doublebuffer: swapbuffers()\par
+\par
+def makewindow():\par
+\tab #\par
+\tab if Gl.debug or Gl.foreground:\par
+\tab\tab foreground()\par
+\tab #\par
+\tab if Gl.fullscreen:\par
+\tab\tab scrwidth, scrheight = getgdesc(GD_XPMAX), getgdesc(GD_YPMAX)\par
+\tab\tab prefposition(0, scrwidth-1, 0, scrheight-1)\par
+\tab else:\par
+\tab\tab keepaspect(1, 1)\par
+\tab\tab prefsize(80, 80)\par
+\tab #\par
+\tab if not Gl.border:\par
+\tab\tab noborder()\par
+\tab wid = winopen(Gl.name)\par
+\tab wintitle(Gl.title)\par
+\tab #\par
+\tab if not Gl.fullscreen:\par
+\tab\tab keepaspect(1, 1)\par
+\tab\tab minsize(10, 10)\par
+\tab\tab maxsize(2000, 2000)\par
+\tab\tab iconsize(66, 66)\par
+\tab\tab winconstraints()\par
+\tab #\par
+\tab nplanes = getplanes()\par
+\tab nmaps = getgdesc(GD_NMMAPS)\par
+\tab if Gl.warnings:\par
+\tab\tab print nplanes, 'color planes,', nmaps, 'color maps'\par
+\tab #\par
+\tab if Gl.doublebuffer and not Gl.colormap and nplanes < 12:\par
+\tab\tab if Gl.warnings: print 'forcing single buffer mode'\par
+\tab\tab Gl.doublebuffer = 0\par
+\tab #\par
+\tab if Gl.colormap:\par
+\tab\tab if not Gl.colormap:\par
+\tab\tab\tab Gl.colormap = nmaps - 1\par
+\tab\tab\tab if Gl.warnings:\par
+\tab\tab\tab\tab print 'not enough color planes available',\par
+\tab\tab\tab\tab print 'for RGB mode; forcing colormap mode'\par
+\tab\tab\tab\tab print 'using color map number', Gl.colormap\par
+\tab\tab if not Gl.colorsubset:\par
+\tab\tab\tab needed = 3\par
+\tab\tab else:\par
+\tab\tab\tab needed = Gl.cyan + Gl.magenta + Gl.yellow\par
+\tab\tab needed = needed*Gl.nparts\par
+\tab\tab if Gl.bg <> (0, 0, 0):\par
+\tab\tab\tab needed = needed+1\par
+\tab\tab if Gl.fg <> (0, 0, 0):\par
+\tab\tab\tab needed = needed+1\par
+\tab\tab if Gl.doublebuffer:\par
+\tab\tab\tab if needed > available(nplanes/2):\par
+\tab\tab\tab\tab Gl.doublebuffer = 0\par
+\tab\tab\tab\tab if Gl.warnings:\par
+\tab\tab\tab\tab\tab print 'not enough colors available',\par
+\tab\tab\tab\tab\tab print 'for double buffer mode;',\par
+\tab\tab\tab\tab\tab print 'forcing single buffer mode'\par
+\tab\tab\tab else:\par
+\tab\tab\tab\tab nplanes = nplanes/2\par
+\tab\tab if needed > available(nplanes):\par
+\tab\tab\tab # Do this warning always\par
+\tab\tab\tab print 'still not enough colors available;',\par
+\tab\tab\tab print 'parts will be left white'\par
+\tab\tab\tab print '(needed', needed, 'but have only',\par
+\tab\tab\tab print available(nplanes), 'colors available)'\par
+\tab #\par
+\tab if Gl.doublebuffer:\par
+\tab\tab doublebuffer()\par
+\tab\tab gconfig()\par
+\tab #\par
+\tab if Gl.colormap:\par
+\tab\tab Gl.c3i = pseudo_c3i\par
+\tab\tab fixcolormap()\par
+\tab else:\par
+\tab\tab Gl.c3i = c3i\par
+\tab\tab RGBmode()\par
+\tab\tab gconfig()\par
+\tab #\par
+\tab if Gl.fullscreen:\par
+\tab\tab # XXX Should find out true screen size using getgdesc()\par
+\tab\tab ortho2(-1.1*1.280, 1.1*1.280, -1.1*1.024, 1.1*1.024)\par
+\tab else:\par
+\tab\tab ortho2(-1.1, 1.1, -1.1, 1.1)\par
+\tab #\par
+\tab return wid\par
+\par
+def available(nplanes):\par
+\tab return pow(2, nplanes) - 1\tab # Reserve one pixel for black\par
+\par
+def fixcolormap():\par
+\tab multimap()\par
+\tab gconfig()\par
+\tab nplanes = getplanes()\par
+\tab if Gl.warnings:\par
+\tab\tab print 'multimap mode has', nplanes, 'color planes'\par
+\tab imap = Gl.colormap\par
+\tab Gl.startindex = pow(2, nplanes) - 1\par
+\tab Gl.stopindex = 1\par
+\tab setmap(imap)\par
+\tab mapcolor(0, 0, 0, 0) # Fixed entry for black\par
+\tab if Gl.bg <> (0, 0, 0):\par
+\tab\tab r, g, b = Gl.bg\par
+\tab\tab mapcolor(1, r, g, b) # Fixed entry for Gl.bg\par
+\tab\tab Gl.stopindex = 2\par
+\tab if Gl.fg <> (0, 0, 0):\par
+\tab\tab r, g, b = Gl.fg\par
+\tab\tab mapcolor(2, r, g, b) # Fixed entry for Gl.fg\par
+\tab\tab Gl.stopindex = 3\par
+\tab Gl.overflow_seen = 0\par
+\tab resetindex()\par
+\par
+def resetindex():\par
+\tab Gl.index = Gl.startindex\par
+\par
+r0g0b0 = (0, 0, 0)\par
+\par
+def pseudo_c3i(rgb):\par
+\tab if rgb == r0g0b0:\par
+\tab\tab index = 0\par
+\tab elif rgb == Gl.bg:\par
+\tab\tab index = 1\par
+\tab elif rgb == Gl.fg:\par
+\tab\tab index = 2\par
+\tab else:\par
+\tab\tab index = definecolor(rgb)\par
+\tab color(index)\par
+\par
+def definecolor(rgb):\par
+\tab index = Gl.index\par
+\tab if index < Gl.stopindex:\par
+\tab\tab if Gl.debug: print 'definecolor hard case', rgb\par
+\tab\tab # First see if we already have this one...\par
+\tab\tab for index in range(Gl.stopindex, Gl.startindex+1):\par
+\tab\tab\tab if rgb == getmcolor(index):\par
+\tab\tab\tab\tab if Gl.debug: print 'return', index\par
+\tab\tab\tab\tab return index\par
+\tab\tab # Don't clobber reserverd colormap entries\par
+\tab\tab if not Gl.overflow_seen:\par
+\tab\tab\tab # Shouldn't happen any more, hence no Gl.warnings test\par
+\tab\tab\tab print 'mclock: out of colormap entries'\par
+\tab\tab\tab Gl.overflow_seen = 1\par
+\tab\tab return Gl.stopindex\par
+\tab r, g, b = rgb\par
+\tab if Gl.debug > 1: print 'mapcolor', (index, r, g, b)\par
+\tab mapcolor(index, r, g, b)\par
+\tab Gl.index = index - 1\par
+\tab return index\par
+\par
+# Compute n**i\par
+def pow(n, i):\par
+\tab x = 1\par
+\tab for j in range(i): x = x*n\par
+\tab return x\par
+\par
+def mouseclick(mouse, updown, x, y):\par
+\tab if updown == 1:\par
+\tab\tab # mouse button came down, start tracking\par
+\tab\tab if Gl.debug:\par
+\tab\tab\tab print 'mouse', mouse, 'down at', x, y\par
+\tab\tab if mouse == 2:\par
+\tab\tab\tab Gl.mouse2down = 1\par
+\tab\tab\tab mouse2track(x, y)\par
+\tab\tab elif mouse == 3:\par
+\tab\tab\tab Gl.mouse3down = 1\par
+\tab\tab\tab mouse3track(x, y)\par
+\tab\tab else:\par
+\tab\tab\tab print 'fatal error'\par
+\tab\tab qdevice(MOUSEX)\par
+\tab\tab qdevice(MOUSEY)\par
+\tab\tab return 0\par
+\tab else:\par
+\tab\tab # mouse button came up, stop tracking\par
+\tab\tab if Gl.debug:\par
+\tab\tab\tab print 'mouse', mouse, 'up at', x, y\par
+\tab\tab unqdevice(MOUSEX)\par
+\tab\tab unqdevice(MOUSEY)\par
+\tab\tab if mouse == 2:\par
+\tab\tab\tab mouse2track(x, y)\par
+\tab\tab\tab Gl.mouse2down = 0\par
+\tab\tab elif mouse == 3:\par
+\tab\tab\tab mouse3track(x, y)\par
+\tab\tab\tab Gl.mouse3down = 0\par
+\tab\tab else:\par
+\tab\tab\tab print 'fatal error'\par
+\tab\tab Gl.alarm_set = 1\par
+\tab\tab return 1\par
+\par
+def mouse3track(x, y):\par
+\tab # first compute polar coordinates from x and y\par
+\tab cx, cy = Gl.ox + Gl.cx/2, Gl.oy + Gl.cy/2\par
+\tab x, y = x - cx, y - cy\par
+\tab if (x, y) == (0, 0): return\tab # would cause an exception\par
+\tab minutes = int(30.5 + 30.0*math.atan2(float(-x), float(-y))/pi)\par
+\tab if minutes == 60: minutes = 0\par
+\tab a,b = Gl.alarm_minutes/15, minutes/15\par
+\tab if (a,b) == (0,3):\par
+\tab\tab # Moved backward through 12 o'clock:\par
+\tab\tab Gl.alarm_hours = Gl.alarm_hours - 1\par
+\tab\tab if Gl.alarm_hours < 0: Gl.alarm_hours = Gl.alarm_hours + 24\par
+\tab if (a,b) == (3,0):\par
+\tab\tab # Moved forward through 12 o'clock:\par
+\tab\tab Gl.alarm_hours = Gl.alarm_hours + 1\par
+\tab\tab if Gl.alarm_hours >= 24: Gl.alarm_hours = Gl.alarm_hours - 24\par
+\tab Gl.alarm_minutes = minutes\par
+\tab seconds = Gl.alarm_hours * HOUR + Gl.alarm_minutes * MINUTE\par
+\tab if seconds <> Gl.alarm_time:\par
+\tab\tab draw_alarm(rgb_bg())\par
+\tab\tab Gl.alarm_time = seconds\par
+\tab\tab draw_alarm(rgb_fg())\par
+\par
+def mouse2track(x, y):\par
+\tab # first compute polar coordinates from x and y\par
+\tab cx, cy = Gl.ox + Gl.cx/2, Gl.oy + Gl.cy/2\par
+\tab x, y = x - cx, y - cy\par
+\tab if (x, y) == (0, 0): return\tab # would cause an exception\par
+\tab hours = int(6.5 - float(Gl.alarm_minutes)/60.0 + 6.0*math.atan2(float(-x), float(-y))/pi)\par
+\tab if hours == 12: hours = 0\par
+\tab if (Gl.alarm_hours,hours) == (0,11):\par
+\tab\tab # Moved backward through midnight:\par
+\tab\tab Gl.alarm_hours = 23\par
+\tab elif (Gl.alarm_hours,hours) == (12,11):\par
+\tab\tab # Moved backward through noon:\par
+\tab\tab Gl.alarm_hours = 11\par
+\tab elif (Gl.alarm_hours,hours) == (11,0):\par
+\tab\tab # Moved forward through noon:\par
+\tab\tab Gl.alarm_hours = 12\par
+\tab elif (Gl.alarm_hours,hours) == (23,0):\par
+\tab\tab # Moved forward through midnight:\par
+\tab\tab Gl.alarm_hours = 0\par
+\tab elif Gl.alarm_hours < 12:\par
+\tab\tab Gl.alarm_hours = hours\par
+\tab else:\par
+\tab\tab Gl.alarm_hours = hours + 12\par
+\tab seconds = Gl.alarm_hours * HOUR + Gl.alarm_minutes * MINUTE\par
+\tab if seconds <> Gl.alarm_time:\par
+\tab\tab draw_alarm(rgb_bg())\par
+\tab\tab Gl.alarm_time = seconds\par
+\tab\tab draw_alarm(rgb_fg())\par
+\par
+def initmenu():\par
+\tab Gl.pup = pup = newpup()\par
+\tab addtopup(pup, 'M Clock%t|Alarm On/Off|Seconds Hand On/Off|Quit', 0)\par
+\par
+def handlemenu():\par
+\tab item = dopup(Gl.pup)\par
+\tab if item == 1:\par
+\tab\tab # Toggle alarm\par
+\tab\tab if Gl.alarm_set:\par
+\tab\tab\tab Gl.alarm_set = 0\par
+\tab\tab\tab Gl.alarm_on = 0\par
+\tab\tab else:\par
+\tab\tab\tab Gl.alarm_set = 1\par
+\tab\tab Gl.change = 1\par
+\tab\tab clearall()\par
+\tab elif item == 2:\par
+\tab\tab # Toggle Seconds Hand\par
+\tab\tab if Gl.update == 1:\par
+\tab\tab\tab Gl.update = 60\par
+\tab\tab\tab Gl.timernoise = 60\par
+\tab\tab else:\par
+\tab\tab\tab Gl.update = 1\par
+\tab\tab\tab Gl.timernoise = 6\par
+\tab\tab Gl.change = 1\par
+\tab elif item == 3:\par
+\tab\tab if Gl.debug: print 'Exit'\par
+\tab\tab sys.exit(0)\par
+\par
+main()\par
+\par
+\par
+}
+ 

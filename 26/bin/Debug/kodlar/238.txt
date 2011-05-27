@@ -1,0 +1,226 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset162 Microsoft Sans Serif;}}
+\viewkind4\uc1\pard\lang1055\f0\fs17\par
+# Widget to display a man page\par
+\par
+import regex\par
+from Tkinter import *\par
+from Tkinter import _tkinter\par
+from ScrolledText import ScrolledText\par
+\par
+# XXX These fonts may have to be changed to match your system\par
+BOLDFONT = '*-Courier-Bold-R-Normal-*-120-*'\par
+ITALICFONT = '*-Courier-Medium-O-Normal-*-120-*'\par
+\par
+# XXX Recognizing footers is system dependent\par
+# (This one works for IRIX 5.2 and Solaris 2.2)\par
+footerprog = regex.compile(\par
+\tab '^     Page [1-9][0-9]*[ \\t]+\\|^.*Last change:.*[1-9][0-9]*\\n')\par
+emptyprog = regex.compile('^[ \\t]*\\n')\par
+ulprog = regex.compile('^[ \\t]*[Xv!_][Xv!_ \\t]*\\n')\par
+\par
+# Basic Man Page class -- does not disable editing\par
+class EditableManPage(ScrolledText):\par
+\par
+\tab # Initialize instance\par
+\tab def __init__(self, master=None, **cnf):\par
+\tab\tab # Initialize base class\par
+\tab\tab apply(ScrolledText.__init__, (self, master), cnf)\par
+\par
+\tab\tab # Define tags for formatting styles\par
+\tab\tab self.tag_config('X', underline=1)\par
+\tab\tab self.tag_config('!', font=BOLDFONT)\par
+\tab\tab self.tag_config('_', font=ITALICFONT)\par
+\par
+\tab\tab # Set state to idle\par
+\tab\tab self.fp = None\par
+\tab\tab self.lineno = 0\par
+\par
+\tab # Test whether we are busy parsing a file\par
+\tab def busy(self):\par
+\tab\tab return self.fp != None\par
+\par
+\tab # Ensure we're not busy\par
+\tab def kill(self):\par
+\tab\tab if self.busy():\par
+\tab\tab\tab self._endparser()\par
+\par
+\tab # Parse a file, in the background\par
+\tab def asyncparsefile(self, fp):\par
+\tab\tab self._startparser(fp)\par
+\tab\tab self.tk.createfilehandler(fp, _tkinter.READABLE,\par
+\tab\tab\tab\tab\tab   self._filehandler)\par
+\par
+\tab parsefile = asyncparsefile\tab # Alias\par
+\par
+\tab # I/O handler used by background parsing\par
+\tab def _filehandler(self, fp, mask):\par
+\tab\tab nextline = self.fp.readline()\par
+\tab\tab if not nextline:\par
+\tab\tab\tab self._endparser()\par
+\tab\tab\tab return\par
+\tab\tab self._parseline(nextline)\par
+\par
+\tab # Parse a file, now (cannot be aborted)\par
+\tab def syncparsefile(self, fp):\par
+\tab\tab from select import select\par
+\tab\tab def avail(fp=fp, tout=0.0, select=select):\par
+\tab\tab\tab return select([fp], [], [], tout)[0]\par
+\tab\tab height = self.getint(self['height'])\par
+\tab\tab self._startparser(fp)\par
+\tab\tab while 1:\par
+\tab\tab\tab nextline = fp.readline()\par
+\tab\tab\tab if not nextline:\par
+\tab\tab\tab\tab break\par
+\tab\tab\tab self._parseline(nextline)\par
+\tab\tab self._endparser()\par
+\par
+\tab # Initialize parsing from a particular file -- must not be busy\par
+\tab def _startparser(self, fp):\par
+\tab\tab if self.busy():\par
+\tab\tab\tab raise RuntimeError, 'startparser: still busy'\par
+\tab\tab fp.fileno()\tab\tab # Test for file-ness\par
+\tab\tab self.fp = fp\par
+\tab\tab self.lineno = 0\par
+\tab\tab self.ok = 0\par
+\tab\tab self.empty = 0\par
+\tab\tab self.buffer = None\par
+\tab\tab savestate = self['state']\par
+\tab\tab self['state'] = NORMAL\par
+\tab\tab self.delete('1.0', END)\par
+\tab\tab self['state'] = savestate\par
+\par
+\tab # End parsing -- must be busy, need not be at EOF\par
+\tab def _endparser(self):\par
+\tab\tab if not self.busy():\par
+\tab\tab\tab raise RuntimeError, 'endparser: not busy'\par
+\tab\tab if self.buffer:\par
+\tab\tab\tab self._parseline('')\par
+\tab\tab try:\par
+\tab\tab\tab self.tk.deletefilehandler(self.fp)\par
+\tab\tab except TclError, msg:\par
+\tab\tab\tab pass\par
+\tab\tab self.fp.close()\par
+\tab\tab self.fp = None\par
+\tab\tab del self.ok, self.empty, self.buffer\par
+\par
+\tab # Parse a single line\par
+\tab def _parseline(self, nextline):\par
+\tab\tab if not self.buffer:\par
+\tab\tab\tab # Save this line -- we need one line read-ahead\par
+\tab\tab\tab self.buffer = nextline\par
+\tab\tab\tab return\par
+\tab\tab if emptyprog.match(self.buffer) >= 0:\par
+\tab\tab\tab # Buffered line was empty -- set a flag\par
+\tab\tab\tab self.empty = 1\par
+\tab\tab\tab self.buffer = nextline\par
+\tab\tab\tab return\par
+\tab\tab textline = self.buffer\par
+\tab\tab if ulprog.match(nextline) >= 0:\par
+\tab\tab\tab # Next line is properties for buffered line\par
+\tab\tab\tab propline = nextline\par
+\tab\tab\tab self.buffer = None\par
+\tab\tab else:\par
+\tab\tab\tab # Next line is read-ahead\par
+\tab\tab\tab propline = None\par
+\tab\tab\tab self.buffer = nextline\par
+\tab\tab if not self.ok:\par
+\tab\tab\tab # First non blank line after footer must be header\par
+\tab\tab\tab # -- skip that too\par
+\tab\tab\tab self.ok = 1\par
+\tab\tab\tab self.empty = 0\par
+\tab\tab\tab return\par
+\tab\tab if footerprog.match(textline) >= 0:\par
+\tab\tab\tab # Footer -- start skipping until next non-blank line\par
+\tab\tab\tab self.ok = 0\par
+\tab\tab\tab self.empty = 0\par
+\tab\tab\tab return\par
+\tab\tab savestate = self['state']\par
+\tab\tab self['state'] = NORMAL\par
+\tab\tab if TkVersion >= 4.0:\par
+\tab\tab\tab self.mark_set('insert', 'end-1c')\par
+\tab\tab else:\par
+\tab\tab\tab self.mark_set('insert', END)\par
+\tab\tab if self.empty:\par
+\tab\tab\tab # One or more previous lines were empty\par
+\tab\tab\tab # -- insert one blank line in the text\par
+\tab\tab\tab self._insert_prop('\\n')\par
+\tab\tab\tab self.lineno = self.lineno + 1\par
+\tab\tab\tab self.empty = 0\par
+\tab\tab if not propline:\par
+\tab\tab\tab # No properties\par
+\tab\tab\tab self._insert_prop(textline)\par
+\tab\tab else:\par
+\tab\tab\tab # Search for properties\par
+\tab\tab\tab p = ''\par
+\tab\tab\tab j = 0\par
+\tab\tab\tab for i in range(min(len(propline), len(textline))):\par
+\tab\tab\tab\tab if propline[i] != p:\par
+\tab\tab\tab\tab\tab if j < i:\par
+\tab\tab\tab\tab\tab     self._insert_prop(textline[j:i], p)\par
+\tab\tab\tab\tab\tab     j = i\par
+\tab\tab\tab\tab\tab p = propline[i]\par
+\tab\tab\tab self._insert_prop(textline[j:])\par
+\tab\tab self.lineno = self.lineno + 1\par
+\tab\tab self['state'] = savestate\par
+\par
+\tab # Insert a string at the end, with at most one property (tag)\par
+\tab def _insert_prop(self, str, prop = ' '):\par
+\tab\tab here = self.index(AtInsert())\par
+\tab\tab self.insert(AtInsert(), str)\par
+\tab\tab if TkVersion <= 4.0:\par
+\tab\tab\tab tags = self.tag_names(here)\par
+\tab\tab\tab for tag in tags:\par
+\tab\tab\tab\tab self.tag_remove(tag, here, AtInsert())\par
+\tab\tab if prop != ' ':\par
+\tab\tab\tab self.tag_add(prop, here, AtInsert())\par
+\par
+# Readonly Man Page class -- disables editing, otherwise the same\par
+class ReadonlyManPage(EditableManPage):\par
+\par
+\tab # Initialize instance\par
+\tab def __init__(self, master=None, **cnf):\par
+\tab\tab cnf['state'] = DISABLED\par
+\tab\tab apply(EditableManPage.__init__, (self, master), cnf)\par
+\par
+# Alias\par
+ManPage = ReadonlyManPage\par
+\par
+# Test program.\par
+# usage: ManPage [manpage]; or ManPage [-f] file\par
+# -f means that the file is nroff -man output run through ul -i\par
+def test():\par
+\tab import os\par
+\tab import sys\par
+\tab # XXX This directory may be different on your system\par
+\tab MANDIR = '/usr/local/man/mann'\par
+\tab DEFAULTPAGE = 'Tcl'\par
+\tab formatted = 0\par
+\tab if sys.argv[1:] and sys.argv[1] == '-f':\par
+\tab\tab formatted = 1\par
+\tab\tab del sys.argv[1]\par
+\tab if sys.argv[1:]:\par
+\tab\tab name = sys.argv[1]\par
+\tab else:\par
+\tab\tab name = DEFAULTPAGE\par
+\tab if not formatted:\par
+\tab\tab if name[-2:-1] != '.':\par
+\tab\tab\tab name = name + '.n'\par
+\tab\tab name = os.path.join(MANDIR, name)\par
+\tab root = Tk()\par
+\tab root.minsize(1, 1)\par
+\tab manpage = ManPage(root, relief=SUNKEN, borderwidth=2)\par
+\tab manpage.pack(expand=1, fill=BOTH)\par
+\tab if formatted:\par
+\tab\tab fp = open(name, 'r')\par
+\tab else:\par
+\tab\tab fp = os.popen('nroff -man %s | ul -i' % name, 'r')\par
+\tab manpage.parsefile(fp)\par
+\tab root.mainloop()\par
+\par
+# Run the test program when called as a script\par
+if __name__ == '__main__':\par
+\tab test()\par
+\par
+\par
+}
+ 

@@ -1,0 +1,406 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset162 Microsoft Sans Serif;}}
+\viewkind4\uc1\pard\lang1055\f0\fs17\par
+# GL STDWIN\par
+#\par
+# See stdwingl for a convenient hack to use this instead of built-in stdwin\par
+# without modifying your application, except for one line in the main file.\par
+#\par
+# Intrinsic differences with built-in stdwin (hard or impossible to fix):\par
+# - Need to call w.close() to close a window !!!\par
+# - Need to call m.close() to remove a menu !!!\par
+# - Doesn't enforce the existence of at most one drawing object\par
+# - No textedit package\par
+# - No X11 selections\par
+#\par
+# Not yet implemented:\par
+# - shade drawing\par
+# - elliptical arc drawing (need to play with transformation)\par
+# - more than one mouse button\par
+# - scroll bars (need to redo viewport handling to get this)\par
+# - partial redraws\par
+# - dialog boxes\par
+# - timer events\par
+# - cursors\par
+#\par
+# Extra features:\par
+# - color (for now, you need to know the colormap index)\par
+\par
+\par
+import gl\par
+import fm\par
+from GL import *\par
+from DEVICE import *\par
+from stdwinevents import *\par
+\par
+\par
+# Customizable constants\par
+#\par
+DEF_FONT = 'Times-Roman'\tab\tab # Default font\par
+DEF_SIZE = 12\tab\tab\tab\tab # Default font size (points)\par
+MASK = 20\tab\tab\tab\tab # Viewport minus scrmask\par
+\par
+\par
+# A structure to hold global variables\par
+#\par
+class Struct: pass\par
+G = Struct()\par
+#\par
+G.queue = []\tab\tab\tab\tab # Pending STDWIN events\par
+G.drawqueue = []\tab\tab\tab # Windows that need WE_REDRAW\par
+G.windowmap = \{\}\tab\tab\tab # Map window id to window object\par
+G.windowmap['0'] = None\tab\tab\tab # For convenience\par
+G.focus = None\tab\tab\tab\tab # Input focus\par
+G.fg = BLACK\tab\tab\tab\tab # Foreground color\par
+G.bg = WHITE\tab\tab\tab\tab # Background color\par
+G.def_size = 0, 0\tab\tab\tab # Default window size\par
+G.def_pos = 0, 0\tab\tab\tab # Default window position\par
+#\par
+G.size = DEF_SIZE\par
+G.font = fm.findfont(DEF_FONT).scalefont(G.size)\par
+\par
+\par
+# Initialize GL\par
+#\par
+gl.foreground()\par
+gl.noport()\par
+dummygid = gl.winopen('')\par
+\par
+# Ask for all sorts of events\par
+#\par
+# Both REDRAW (= resize and/or redraw!) and INPUTCHANGE are implicitly queued\par
+#qdevice(REDRAW)\par
+#qdevice(INPUTCHANGE)\par
+#\par
+# Keyboard\par
+gl.qdevice(KEYBD)\par
+gl.qdevice(LEFTARROWKEY)\par
+gl.qdevice(RIGHTARROWKEY)\par
+gl.qdevice(UPARROWKEY)\par
+gl.qdevice(DOWNARROWKEY)\par
+gl.qdevice(LEFTALTKEY)\par
+gl.qdevice(RIGHTALTKEY)\par
+#\par
+# Mouse\par
+gl.qdevice(LEFTMOUSE)\par
+#gl.qdevice(MIDDLEMOUSE)\par
+gl.qdevice(RIGHTMOUSE)\tab\tab\tab # Menu button\par
+# NB MOUSEX, MOUSEY events are queued on button down\par
+#\par
+# Window close requests\par
+gl.qdevice(WINQUIT)\par
+gl.qdevice(WINSHUT)\par
+#\par
+# These aren't needed\par
+#gl.qdevice(TIMER0)\par
+#gl.qdevice(WINFREEZE)\par
+#gl.qdevice(WINTHAW)\par
+#gl.qdevice(REDRAWICONIC)\par
+\par
+\par
+# STDWIN: create a new window\par
+#\par
+def open(title):\par
+\tab h, v = G.def_pos\par
+\tab width, height = G.def_size\par
+\tab if h > 0 or v > 0:\par
+\tab\tab # Choose arbitrary defaults\par
+\tab\tab if h < 0: h = 10\par
+\tab\tab if v < 0: v = 30\par
+\tab\tab if width <= 0: width = 400\par
+\tab\tab if height <= 0: height = 300\par
+\tab\tab gl.prefposition(h, h+width, 1024-v, 1024-v-height)\par
+\tab elif width > 0 or height > 0:\par
+\tab\tab if width <= 0: width = 400\par
+\tab\tab if height <= 0: height = 300\par
+\tab\tab gl.prefsize(width, height)\par
+\tab from glstdwwin import WindowObject\par
+\tab win = WindowObject()._init(title)\par
+\tab G.windowmap[`win._gid`] = win\par
+\tab return win\par
+\par
+\par
+# STDWIN: set default initial window position (0 means use default)\par
+#\par
+def setdefwinpos(h, v):\par
+\tab G.def_pos = h, v\par
+\par
+\par
+# STDWIN: set default window size (0 means use default)\par
+#\par
+def setdefwinsize(width, height):\par
+\tab G.def_size = width, height\par
+\par
+\par
+# STDWIN: beep or ring the bell\par
+#\par
+def fleep():\par
+\tab gl.ringbell()\par
+\par
+\par
+# STDWIN: set default foreground color\par
+#\par
+def setfgcolor(color):\par
+\tab G.fg = color\par
+\par
+\par
+# STDWIN: set default background color\par
+#\par
+def setbgcolor(color):\par
+\tab G.bg = color\par
+\par
+\par
+# STDWIN: get default foreground color\par
+#\par
+def getfgcolor():\par
+\tab return G.fgcolor\par
+\par
+\par
+# STDWIN: get default background color\par
+#\par
+def getbgcolor():\par
+\tab return G.bgcolor\par
+\par
+\par
+# Table mapping characters to key codes\par
+#\par
+key2code = key = \{\}\par
+key['A'] = AKEY\par
+key['B'] = BKEY\par
+key['C'] = CKEY\par
+key['D'] = DKEY\par
+key['E'] = EKEY\par
+key['F'] = FKEY\par
+key['G'] = GKEY\par
+key['H'] = HKEY\par
+key['I'] = IKEY\par
+key['J'] = JKEY\par
+key['K'] = KKEY\par
+key['L'] = LKEY\par
+key['M'] = MKEY\par
+key['N'] = NKEY\par
+key['O'] = OKEY\par
+key['P'] = PKEY\par
+key['Q'] = QKEY\par
+key['R'] = RKEY\par
+key['S'] = SKEY\par
+key['T'] = TKEY\par
+key['U'] = UKEY\par
+key['V'] = VKEY\par
+key['W'] = WKEY\par
+key['X'] = XKEY\par
+key['Y'] = YKEY\par
+key['Z'] = ZKEY\par
+key['0'] = ZEROKEY\par
+key['1'] = ONEKEY\par
+key['2'] = TWOKEY\par
+key['3'] = THREEKEY\par
+key['4'] = FOURKEY\par
+key['5'] = FIVEKEY\par
+key['6'] = SIXKEY\par
+key['7'] = SEVENKEY\par
+key['8'] = EIGHTKEY\par
+key['9'] = NINEKEY\par
+del key\par
+#\par
+code2key = \{\}\par
+codelist = []\par
+for key in key2code.keys():\par
+\tab code = key2code[key]\par
+\tab code2key[`code`] = key\par
+\tab codelist.append(code)\par
+del key\par
+\par
+\par
+# STDWIN: wait for the next event\par
+#\par
+commands = \{\}\par
+commands['\\r'] = WC_RETURN\par
+commands['\\b'] = WC_BACKSPACE\par
+commands['\\t'] = WC_TAB\par
+#\par
+def getevent():\par
+\tab while 1:\par
+\tab\tab #\par
+\tab\tab # Get next event from the processed queue, if any\par
+\tab\tab #\par
+\tab\tab if G.queue:\par
+\tab\tab\tab event = G.queue[0]\par
+\tab\tab\tab del G.queue[0]\par
+\tab\tab\tab #print 'getevent from queue -->', event\par
+\tab\tab\tab return event\par
+\tab\tab #\par
+\tab\tab # Get next event from the draw queue, if any,\par
+\tab\tab # but only if there is nothing in the system queue.\par
+\tab\tab #\par
+\tab\tab if G.drawqueue and not gl.qtest():\par
+\tab\tab\tab win = G.drawqueue[0]\par
+\tab\tab\tab del G.drawqueue[0]\par
+\tab\tab\tab gl.winset(win._gid)\par
+\tab\tab\tab gl.color(win._bg)\par
+\tab\tab\tab gl.clear()\par
+\tab\tab\tab event = WE_DRAW, win, win._area\par
+\tab\tab\tab #print 'getevent from drawqueue -->', event\par
+\tab\tab\tab return event\par
+\tab\tab #\par
+\tab\tab # Get next event from system queue, blocking if necessary\par
+\tab\tab # until one is available.\par
+\tab\tab # Some cases immediately return the event, others do nothing\par
+\tab\tab # or append one or more events to the processed queue.\par
+\tab\tab #\par
+\tab\tab dev, val = gl.qread()\par
+\tab\tab #\par
+\tab\tab if dev == REDRAW:\par
+\tab\tab\tab win = G.windowmap[`val`]\par
+\tab\tab\tab old_area = win._area\par
+\tab\tab\tab win._fixviewport()\par
+\tab\tab\tab win._needredraw()\par
+\tab\tab\tab if old_area <> win._area:\par
+\tab\tab\tab\tab #print 'getevent --> WE_SIZE'\par
+\tab\tab\tab\tab return WE_SIZE, win, None\par
+\tab\tab elif dev == KEYBD:\par
+\tab\tab\tab if val == 3:\par
+\tab\tab\tab\tab raise KeyboardInterrupt # Control-C in window\par
+\tab\tab\tab character = chr(val)\par
+\tab\tab\tab if commands.has_key(character):\par
+\tab\tab\tab\tab return WE_COMMAND, G.focus, commands[character]\par
+\tab\tab\tab return WE_CHAR, G.focus, character\par
+\tab\tab elif dev == LEFTARROWKEY:\par
+\tab\tab\tab if val:\par
+\tab\tab\tab\tab return WE_COMMAND, G.focus, WC_LEFT\par
+\tab\tab elif dev == RIGHTARROWKEY:\par
+\tab\tab\tab if val:\par
+\tab\tab\tab\tab return WE_COMMAND, G.focus, WC_RIGHT\par
+\tab\tab elif dev == UPARROWKEY:\par
+\tab\tab\tab if val:\par
+\tab\tab\tab\tab return WE_COMMAND, G.focus, WC_UP\par
+\tab\tab elif dev == DOWNARROWKEY:\par
+\tab\tab\tab if val:\par
+\tab\tab\tab\tab return WE_COMMAND, G.focus, WC_DOWN\par
+\tab\tab elif dev in (LEFTALTKEY, RIGHTALTKEY):\par
+\tab\tab\tab if val:\par
+\tab\tab\tab\tab for code in codelist:\par
+\tab\tab\tab\tab\tab gl.qdevice(code)\par
+\tab\tab\tab else:\par
+\tab\tab\tab\tab for code in codelist:\par
+\tab\tab\tab\tab\tab gl.unqdevice(code)\par
+\tab\tab elif dev in codelist:\par
+\tab\tab\tab if val:\par
+\tab\tab\tab\tab event = G.focus._doshortcut(code2key[`dev`])\par
+\tab\tab\tab\tab if event:\par
+\tab\tab\tab\tab\tab return event\par
+\tab\tab elif dev == LEFTMOUSE:\par
+\tab\tab\tab G.mousex = gl.getvaluator(MOUSEX)\par
+\tab\tab\tab G.mousey = gl.getvaluator(MOUSEY)\par
+\tab\tab\tab if val:\par
+\tab\tab\tab\tab type = WE_MOUSE_DOWN\par
+\tab\tab\tab\tab gl.qdevice(MOUSEX)\par
+\tab\tab\tab\tab gl.qdevice(MOUSEY)\par
+\tab\tab\tab else:\par
+\tab\tab\tab\tab type = WE_MOUSE_UP\par
+\tab\tab\tab\tab gl.unqdevice(MOUSEX)\par
+\tab\tab\tab\tab gl.unqdevice(MOUSEY)\par
+\tab\tab\tab return _mouseevent(type)\par
+\tab\tab elif dev == MOUSEX:\par
+\tab\tab\tab G.mousex = val\par
+\tab\tab\tab return _mouseevent(WE_MOUSE_MOVE)\par
+\tab\tab elif dev == MOUSEY:\par
+\tab\tab\tab G.mousey = val\par
+\tab\tab\tab return _mouseevent(WE_MOUSE_MOVE)\par
+\tab\tab elif dev == RIGHTMOUSE:\tab\tab # Menu button press/release\par
+\tab\tab\tab if val:\tab\tab\tab # Press\par
+\tab\tab\tab\tab event = G.focus._domenu()\par
+\tab\tab\tab\tab if event:\par
+\tab\tab\tab\tab\tab return event\par
+\tab\tab elif dev == INPUTCHANGE:\par
+\tab\tab\tab if G.focus:\par
+\tab\tab\tab\tab G.queue.append(WE_DEACTIVATE, G.focus, None)\par
+\tab\tab\tab G.focus = G.windowmap[`val`]\par
+\tab\tab\tab if G.focus:\par
+\tab\tab\tab\tab G.queue.append(WE_ACTIVATE, G.focus, None)\par
+\tab\tab elif dev in (WINSHUT, WINQUIT):\par
+\tab\tab\tab return WE_CLOSE, G.windowmap[`val`], None\par
+\tab\tab else:\par
+\tab\tab\tab print '*** qread() --> dev:', dev, 'val:', val\par
+\par
+# Helper routine to construct a mouse (up, move or down) event\par
+#\par
+def _mouseevent(type):\par
+\tab gl.winset(G.focus._gid)\par
+\tab orgx, orgy = gl.getorigin()\par
+\tab sizex, sizey = gl.getsize()\par
+\tab x = G.mousex - orgx\par
+\tab y = G.mousey - orgy\par
+\tab return type, G.focus, ((x, sizey-y), 1, 0, 0)\par
+\par
+\par
+\par
+\par
+# STDWIN: text measuring functions\par
+\par
+def baseline():\par
+\tab (printermatched, fixed_width, xorig, yorig, xsize, ysize, \\\par
+\tab\tab height, nglyphs) = G.font.getfontinfo()\par
+\tab return height - yorig\par
+\par
+def lineheight():\par
+\tab (printermatched, fixed_width, xorig, yorig, xsize, ysize, \\\par
+\tab\tab\tab height, nglyphs) = G.font.getfontinfo()\par
+\tab return height\par
+\par
+def textbreak(string, width):\par
+\tab # XXX Slooooow!\par
+\tab n = len(string)\par
+\tab nwidth = textwidth(string[:n])\par
+\tab while nwidth > width:\par
+\tab\tab n = n-1\par
+\tab\tab nwidth = textwidth(string[:n])\par
+\tab return n\par
+\par
+def textwidth(string):\par
+\tab return G.font.getstrwidth(string)\par
+\par
+\par
+# STDWIN: set default font and size\par
+\par
+def setfont(fontname):\par
+\tab G.font = fm.findfont(fontname).scalefont(G.size)\par
+\par
+def setsize(size):\par
+\tab ratio = float(size) / float(G.size)\par
+\tab G.size = size\par
+\tab G.font = G.font.scalefont(ratio)\par
+\par
+\par
+# Utility functions\par
+\par
+# Exclusive-or of two BYTES\par
+#\par
+def xor(x, y):\par
+\tab a = bits(x)\par
+\tab b = bits(y)\par
+\tab c = [0, 0, 0, 0, 0, 0, 0, 0]\par
+\tab for i in range(8):\par
+\tab\tab c[i] = (a[i] + b[i]) % 2\par
+\tab return stib(c)\par
+\par
+# Return the bits of a byte as a list of 8 integers\par
+#\par
+def bits(x):\par
+\tab b = [0, 0, 0, 0, 0, 0, 0, 0]\par
+\tab for i in range(8):\par
+\tab\tab x, b[i] = divmod(x, 2)\par
+\tab return b\par
+\par
+# Convert a list of 8 integers (0|1) to a byte\par
+#\par
+def stib(b):\par
+\tab x = 0\par
+\tab shift = 1\par
+\tab for i in range(8):\par
+\tab\tab x = x + b[i]*shift\par
+\tab\tab shift = shift*2\par
+\tab return x\par
+\par
+\par
+}
+ 

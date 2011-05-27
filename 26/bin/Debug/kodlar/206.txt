@@ -1,0 +1,645 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset162 Microsoft Sans Serif;}}
+\viewkind4\uc1\pard\lang1055\f0\fs17\par
+# A parser for HTML documents\par
+\par
+\par
+# HTML: HyperText Markup Language; an SGML-like syntax used by WWW to\par
+# describe hypertext documents\par
+#\par
+# SGML: Standard Generalized Markup Language\par
+#\par
+# WWW: World-Wide Web; a distributed hypertext system develped at CERN\par
+#\par
+# CERN: European Particle Physics Laboratory in Geneva, Switzerland\par
+\par
+\par
+# This file is only concerned with parsing and formatting HTML\par
+# documents, not with the other (hypertext and networking) aspects of\par
+# the WWW project.  (It does support highlighting of anchors.)\par
+\par
+\par
+import os\par
+import sys\par
+import regex\par
+import string\par
+import sgmllib\par
+\par
+\par
+class HTMLParser(sgmllib.SGMLParser):\par
+\par
+\tab # Copy base class entities and add some\par
+\tab entitydefs = \{\}\par
+\tab for key in sgmllib.SGMLParser.entitydefs.keys():\par
+\tab\tab entitydefs[key] = sgmllib.SGMLParser.entitydefs[key]\par
+\tab entitydefs['bullet'] = '*'\par
+\par
+\tab # Provided -- handlers for tags introducing literal text\par
+\tab\par
+\tab def start_listing(self, attrs):\par
+\tab\tab self.setliteral('listing')\par
+\tab\tab self.literal_bgn('listing', attrs)\par
+\par
+\tab def end_listing(self):\par
+\tab\tab self.literal_end('listing')\par
+\par
+\tab def start_xmp(self, attrs):\par
+\tab\tab self.setliteral('xmp')\par
+\tab\tab self.literal_bgn('xmp', attrs)\par
+\par
+\tab def end_xmp(self):\par
+\tab\tab self.literal_end('xmp')\par
+\par
+\tab def do_plaintext(self, attrs):\par
+\tab\tab self.setnomoretags()\par
+\tab\tab self.literal_bgn('plaintext', attrs)\par
+\par
+\tab # To be overridden -- begin/end literal mode\par
+\tab def literal_bgn(self, tag, attrs): pass\par
+\tab def literal_end(self, tag): pass\par
+\par
+\par
+# Next level of sophistication -- collect anchors, title, nextid and isindex\par
+class CollectingParser(HTMLParser):\par
+\tab #\par
+\tab def __init__(self):\par
+\tab\tab HTMLParser.__init__(self)\par
+\tab\tab self.savetext = None\par
+\tab\tab self.nextid = ''\par
+\tab\tab self.isindex = 0\par
+\tab\tab self.title = ''\par
+\tab\tab self.inanchor = 0\par
+\tab\tab self.anchors = []\par
+\tab\tab self.anchornames = []\par
+\tab\tab self.anchortypes = []\par
+\tab #\par
+\tab def start_a(self, attrs):\par
+\tab\tab self.inanchor = 0\par
+\tab\tab href = ''\par
+\tab\tab name = ''\par
+\tab\tab type = ''\par
+\tab\tab for attrname, value in attrs:\par
+\tab\tab\tab if attrname == 'href':\par
+\tab\tab\tab\tab href = value\par
+\tab\tab\tab if attrname == 'name=':\par
+\tab\tab\tab\tab name = value\par
+\tab\tab\tab if attrname == 'type=':\par
+\tab\tab\tab\tab type = string.lower(value)\par
+\tab\tab if not (href or name):\par
+\tab\tab\tab return\par
+\tab\tab self.anchors.append(href)\par
+\tab\tab self.anchornames.append(name)\par
+\tab\tab self.anchortypes.append(type)\par
+\tab\tab self.inanchor = len(self.anchors)\par
+\tab\tab if not href:\par
+\tab\tab\tab self.inanchor = -self.inanchor\par
+\tab #\par
+\tab def end_a(self):\par
+\tab\tab if self.inanchor > 0:\par
+\tab\tab\tab # Don't show anchors pointing into the current document\par
+\tab\tab\tab if self.anchors[self.inanchor-1][:1] <> '#':\par
+\tab\tab\tab\tab self.handle_data('[' + `self.inanchor` + ']')\par
+\tab\tab self.inanchor = 0\par
+\tab #\par
+\tab def start_header(self, attrs): pass\par
+\tab def end_header(self): pass\par
+\tab #\par
+\tab # (head is the same as header)\par
+\tab def start_head(self, attrs): pass\par
+\tab def end_head(self): pass\par
+\tab #\par
+\tab def start_body(self, attrs): pass\par
+\tab def end_body(self): pass\par
+\tab #\par
+\tab def do_nextid(self, attrs):\par
+\tab\tab self.nextid = attrs\par
+\tab #\par
+\tab def do_isindex(self, attrs):\par
+\tab\tab self.isindex = 1\par
+\tab #\par
+\tab def start_title(self, attrs):\par
+\tab\tab self.savetext = ''\par
+\tab #\par
+\tab def end_title(self):\par
+\tab\tab if self.savetext <> None:\par
+\tab\tab\tab self.title = self.savetext\par
+\tab\tab\tab self.savetext = None\par
+\tab #\par
+\tab def handle_data(self, text):\par
+\tab\tab if self.savetext is not None:\par
+\tab\tab\tab self.savetext = self.savetext + text\par
+\par
+\par
+# Formatting parser -- takes a formatter and a style sheet as arguments\par
+\par
+# XXX The use of style sheets should change: for each tag and end tag\par
+# there should be a style definition, and a style definition should\par
+# encompass many more parameters: font, justification, indentation,\par
+# vspace before, vspace after, hanging tag...\par
+\par
+wordprog = regex.compile('[^ \\t\\n]*')\par
+spaceprog = regex.compile('[ \\t\\n]*')\par
+\par
+class FormattingParser(CollectingParser):\par
+\par
+\tab def __init__(self, formatter, stylesheet):\par
+\tab\tab CollectingParser.__init__(self)\par
+\tab\tab self.fmt = formatter\par
+\tab\tab self.stl = stylesheet\par
+\tab\tab self.savetext = None\par
+\tab\tab self.compact = 0\par
+\tab\tab self.nofill = 0\par
+\tab\tab self.resetfont()\par
+\tab\tab self.setindent(self.stl.stdindent)\par
+\par
+\tab def resetfont(self):\par
+\tab\tab self.fontstack = []\par
+\tab\tab self.stylestack = []\par
+\tab\tab self.fontset = self.stl.stdfontset\par
+\tab\tab self.style = ROMAN\par
+\tab\tab self.passfont()\par
+\par
+\tab def passfont(self):\par
+\tab\tab font = self.fontset[self.style]\par
+\tab\tab self.fmt.setfont(font)\par
+\par
+\tab def pushstyle(self, style):\par
+\tab\tab self.stylestack.append(self.style)\par
+\tab\tab self.style = min(style, len(self.fontset)-1)\par
+\tab\tab self.passfont()\par
+\par
+\tab def popstyle(self):\par
+\tab\tab self.style = self.stylestack[-1]\par
+\tab\tab del self.stylestack[-1]\par
+\tab\tab self.passfont()\par
+\par
+\tab def pushfontset(self, fontset, style):\par
+\tab\tab self.fontstack.append(self.fontset)\par
+\tab\tab self.fontset = fontset\par
+\tab\tab self.pushstyle(style)\par
+\par
+\tab def popfontset(self):\par
+\tab\tab self.fontset = self.fontstack[-1]\par
+\tab\tab del self.fontstack[-1]\par
+\tab\tab self.popstyle()\par
+\par
+\tab def flush(self):\par
+\tab\tab self.fmt.flush()\par
+\par
+\tab def setindent(self, n):\par
+\tab\tab self.fmt.setleftindent(n)\par
+\par
+\tab def needvspace(self, n):\par
+\tab\tab self.fmt.needvspace(n)\par
+\par
+\tab def close(self):\par
+\tab\tab HTMLParser.close(self)\par
+\tab\tab self.fmt.flush()\par
+\par
+\tab def handle_literal(self, text):\par
+\tab\tab lines = string.splitfields(text, '\\n')\par
+\tab\tab for i in range(1, len(lines)):\par
+\tab\tab\tab lines[i] = string.expandtabs(lines[i], 8)\par
+\tab\tab for line in lines[:-1]:\par
+\tab\tab\tab self.fmt.addword(line, 0)\par
+\tab\tab\tab self.fmt.flush()\par
+\tab\tab\tab self.fmt.nospace = 0\par
+\tab\tab for line in lines[-1:]:\par
+\tab\tab\tab self.fmt.addword(line, 0)\par
+\par
+\tab def handle_data(self, text):\par
+\tab\tab if self.savetext is not None:\par
+\tab\tab\tab self.savetext = self.savetext + text\par
+\tab\tab\tab return\par
+\tab\tab if self.literal:\par
+\tab\tab\tab self.handle_literal(text)\par
+\tab\tab\tab return\par
+\tab\tab i = 0\par
+\tab\tab n = len(text)\par
+\tab\tab while i < n:\par
+\tab\tab\tab j = i + wordprog.match(text, i)\par
+\tab\tab\tab word = text[i:j]\par
+\tab\tab\tab i = j + spaceprog.match(text, j)\par
+\tab\tab\tab self.fmt.addword(word, i-j)\par
+\tab\tab\tab if self.nofill and '\\n' in text[j:i]:\par
+\tab\tab\tab\tab self.fmt.flush()\par
+\tab\tab\tab\tab self.fmt.nospace = 0\par
+\tab\tab\tab\tab i = j+1\par
+\tab\tab\tab\tab while text[i-1] <> '\\n': i = i+1\par
+\par
+\tab def literal_bgn(self, tag, attrs):\par
+\tab\tab if tag == 'plaintext':\par
+\tab\tab\tab self.flush()\par
+\tab\tab else:\par
+\tab\tab\tab self.needvspace(1)\par
+\tab\tab self.pushfontset(self.stl.stdfontset, FIXED)\par
+\tab\tab self.setindent(self.stl.literalindent)\par
+\par
+\tab def literal_end(self, tag):\par
+\tab\tab self.needvspace(1)\par
+\tab\tab self.popfontset()\par
+\tab\tab self.setindent(self.stl.stdindent)\par
+\par
+\tab def start_title(self, attrs):\par
+\tab\tab self.flush()\par
+\tab\tab self.savetext = ''\par
+\tab # NB end_title is unchanged\par
+\par
+\tab def do_p(self, attrs):\par
+\tab\tab if self.compact:\par
+\tab\tab\tab self.flush()\par
+\tab\tab else:\par
+\tab\tab\tab self.needvspace(1)\par
+\par
+\tab def do_hr(self, attrs):\par
+\tab\tab self.fmt.hrule()\par
+\par
+\tab def start_h1(self, attrs):\par
+\tab\tab self.needvspace(2)\par
+\tab\tab self.setindent(self.stl.h1indent)\par
+\tab\tab self.pushfontset(self.stl.h1fontset, BOLD)\par
+\tab\tab self.fmt.setjust('c')\par
+\par
+\tab def end_h1(self):\par
+\tab\tab self.popfontset()\par
+\tab\tab self.needvspace(2)\par
+\tab\tab self.setindent(self.stl.stdindent)\par
+\tab\tab self.fmt.setjust('l')\par
+\par
+\tab def start_h2(self, attrs):\par
+\tab\tab self.needvspace(1)\par
+\tab\tab self.setindent(self.stl.h2indent)\par
+\tab\tab self.pushfontset(self.stl.h2fontset, BOLD)\par
+\par
+\tab def end_h2(self):\par
+\tab\tab self.popfontset()\par
+\tab\tab self.needvspace(1)\par
+\tab\tab self.setindent(self.stl.stdindent)\par
+\par
+\tab def start_h3(self, attrs):\par
+\tab\tab self.needvspace(1)\par
+\tab\tab self.setindent(self.stl.stdindent)\par
+\tab\tab self.pushfontset(self.stl.h3fontset, BOLD)\par
+\par
+\tab def end_h3(self):\par
+\tab\tab self.popfontset()\par
+\tab\tab self.needvspace(1)\par
+\tab\tab self.setindent(self.stl.stdindent)\par
+\par
+\tab def start_h4(self, attrs):\par
+\tab\tab self.needvspace(1)\par
+\tab\tab self.setindent(self.stl.stdindent)\par
+\tab\tab self.pushfontset(self.stl.stdfontset, BOLD)\par
+\par
+\tab def end_h4(self):\par
+\tab\tab self.popfontset()\par
+\tab\tab self.needvspace(1)\par
+\tab\tab self.setindent(self.stl.stdindent)\par
+\par
+\tab start_h5 = start_h4\par
+\tab end_h5 = end_h4\par
+\par
+\tab start_h6 = start_h5\par
+\tab end_h6 = end_h5\par
+\par
+\tab start_h7 = start_h6\par
+\tab end_h7 = end_h6\par
+\par
+\tab def start_ul(self, attrs):\par
+\tab\tab self.needvspace(1)\par
+\tab\tab for attrname, value in attrs:\par
+\tab\tab\tab if attrname == 'compact':\par
+\tab\tab\tab\tab self.compact = 1\par
+\tab\tab\tab\tab self.setindent(0)\par
+\tab\tab\tab\tab break\par
+\tab\tab else:\par
+\tab\tab\tab self.setindent(self.stl.ulindent)\par
+\par
+\tab start_dir = start_menu = start_ol = start_ul\par
+\par
+\tab do_li = do_p\par
+\par
+\tab def end_ul(self):\par
+\tab\tab self.compact = 0\par
+\tab\tab self.needvspace(1)\par
+\tab\tab self.setindent(self.stl.stdindent)\par
+\par
+\tab end_dir = end_menu = end_ol = end_ul\par
+\par
+\tab def start_dl(self, attrs):\par
+\tab\tab for attrname, value in attrs:\par
+\tab\tab\tab if attrname == 'compact':\par
+\tab\tab\tab\tab self.compact = 1\par
+\tab\tab self.needvspace(1)\par
+\par
+\tab def end_dl(self):\par
+\tab\tab self.compact = 0\par
+\tab\tab self.needvspace(1)\par
+\tab\tab self.setindent(self.stl.stdindent)\par
+\par
+\tab def do_dt(self, attrs):\par
+\tab\tab if self.compact:\par
+\tab\tab\tab self.flush()\par
+\tab\tab else:\par
+\tab\tab\tab self.needvspace(1)\par
+\tab\tab self.setindent(self.stl.stdindent)\par
+\par
+\tab def do_dd(self, attrs):\par
+\tab\tab self.fmt.addword('', 1)\par
+\tab\tab self.setindent(self.stl.ddindent)\par
+\par
+\tab def start_address(self, attrs):\par
+\tab\tab self.compact = 1\par
+\tab\tab self.needvspace(1)\par
+\tab\tab self.fmt.setjust('r')\par
+\par
+\tab def end_address(self):\par
+\tab\tab self.compact = 0\par
+\tab\tab self.needvspace(1)\par
+\tab\tab self.setindent(self.stl.stdindent)\par
+\tab\tab self.fmt.setjust('l')\par
+\par
+\tab def start_pre(self, attrs):\par
+\tab\tab self.needvspace(1)\par
+\tab\tab self.nofill = self.nofill + 1\par
+\tab\tab self.pushstyle(FIXED)\par
+\par
+\tab def end_pre(self):\par
+\tab\tab self.popstyle()\par
+\tab\tab self.nofill = self.nofill - 1\par
+\tab\tab self.needvspace(1)\par
+\par
+\tab start_typewriter = start_pre\par
+\tab end_typewriter = end_pre\par
+\par
+\tab def do_img(self, attrs):\par
+\tab\tab self.fmt.addword('(image)', 0)\par
+\par
+\tab # Physical styles\par
+\par
+\tab def start_tt(self, attrs): self.pushstyle(FIXED)\par
+\tab def end_tt(self): self.popstyle()\par
+\par
+\tab def start_b(self, attrs): self.pushstyle(BOLD)\par
+\tab def end_b(self): self.popstyle()\par
+\par
+\tab def start_i(self, attrs): self.pushstyle(ITALIC)\par
+\tab def end_i(self): self.popstyle()\par
+\par
+\tab def start_u(self, attrs): self.pushstyle(ITALIC) # Underline???\par
+\tab def end_u(self): self.popstyle()\par
+\par
+\tab def start_r(self, attrs): self.pushstyle(ROMAN) # Not official\par
+\tab def end_r(self): self.popstyle()\par
+\par
+\tab # Logical styles\par
+\par
+\tab start_em = start_i\par
+\tab end_em = end_i\par
+\par
+\tab start_strong = start_b\par
+\tab end_strong = end_b\par
+\par
+\tab start_code = start_tt\par
+\tab end_code = end_tt\par
+\par
+\tab start_samp = start_tt\par
+\tab end_samp = end_tt\par
+\par
+\tab start_kbd = start_tt\par
+\tab end_kbd = end_tt\par
+\par
+\tab start_file = start_tt # unofficial\par
+\tab end_file = end_tt\par
+\par
+\tab start_var = start_i\par
+\tab end_var = end_i\par
+\par
+\tab start_dfn = start_i\par
+\tab end_dfn = end_i\par
+\par
+\tab start_cite = start_i\par
+\tab end_cite = end_i\par
+\par
+\tab start_hp1 = start_i\par
+\tab end_hp1 = start_i\par
+\par
+\tab start_hp2 = start_b\par
+\tab end_hp2 = end_b\par
+\par
+\tab def unknown_starttag(self, tag, attrs):\par
+\tab\tab print '*** unknown <' + tag + '>'\par
+\par
+\tab def unknown_endtag(self, tag):\par
+\tab\tab print '*** unknown </' + tag + '>'\par
+\par
+\par
+# An extension of the formatting parser which formats anchors differently.\par
+class AnchoringParser(FormattingParser):\par
+\par
+\tab def start_a(self, attrs):\par
+\tab\tab FormattingParser.start_a(self, attrs)\par
+\tab\tab if self.inanchor:\par
+\tab\tab\tab self.fmt.bgn_anchor(self.inanchor)\par
+\par
+\tab def end_a(self):\par
+\tab\tab if self.inanchor:\par
+\tab\tab\tab self.fmt.end_anchor(self.inanchor)\par
+\tab\tab\tab self.inanchor = 0\par
+\par
+\par
+# Style sheet -- this is never instantiated, but the attributes\par
+# of the class object itself are used to specify fonts to be used\par
+# for various paragraph styles.\par
+# A font set is a non-empty list of fonts, in the order:\par
+# [roman, italic, bold, fixed].\par
+# When a style is not available the nearest lower style is used\par
+\par
+ROMAN = 0\par
+ITALIC = 1\par
+BOLD = 2\par
+FIXED = 3\par
+\par
+class NullStylesheet:\par
+\tab # Fonts -- none\par
+\tab stdfontset = [None]\par
+\tab h1fontset = [None]\par
+\tab h2fontset = [None]\par
+\tab h3fontset = [None]\par
+\tab # Indents\par
+\tab stdindent = 2\par
+\tab ddindent = 25\par
+\tab ulindent = 4\par
+\tab h1indent = 0\par
+\tab h2indent = 0\par
+\tab literalindent = 0\par
+\par
+\par
+class X11Stylesheet(NullStylesheet):\par
+\tab stdfontset = [ \\\par
+\tab\tab '-*-helvetica-medium-r-normal-*-*-100-100-*-*-*-*-*', \\\par
+\tab\tab '-*-helvetica-medium-o-normal-*-*-100-100-*-*-*-*-*', \\\par
+\tab\tab '-*-helvetica-bold-r-normal-*-*-100-100-*-*-*-*-*', \\\par
+\tab\tab '-*-courier-medium-r-normal-*-*-100-100-*-*-*-*-*', \\\par
+\tab\tab ]\par
+\tab h1fontset = [ \\\par
+\tab\tab '-*-helvetica-medium-r-normal-*-*-180-100-*-*-*-*-*', \\\par
+\tab\tab '-*-helvetica-medium-o-normal-*-*-180-100-*-*-*-*-*', \\\par
+\tab\tab '-*-helvetica-bold-r-normal-*-*-180-100-*-*-*-*-*', \\\par
+\tab\tab ]\par
+\tab h2fontset = [ \\\par
+\tab\tab '-*-helvetica-medium-r-normal-*-*-140-100-*-*-*-*-*', \\\par
+\tab\tab '-*-helvetica-medium-o-normal-*-*-140-100-*-*-*-*-*', \\\par
+\tab\tab '-*-helvetica-bold-r-normal-*-*-140-100-*-*-*-*-*', \\\par
+\tab\tab ]\par
+\tab h3fontset = [ \\\par
+\tab\tab '-*-helvetica-medium-r-normal-*-*-120-100-*-*-*-*-*', \\\par
+\tab\tab '-*-helvetica-medium-o-normal-*-*-120-100-*-*-*-*-*', \\\par
+\tab\tab '-*-helvetica-bold-r-normal-*-*-120-100-*-*-*-*-*', \\\par
+\tab\tab ]\par
+\tab ddindent = 40\par
+\par
+\par
+class MacStylesheet(NullStylesheet):\par
+\tab stdfontset = [ \\\par
+\tab\tab ('Geneva', 'p', 10), \\\par
+\tab\tab ('Geneva', 'i', 10), \\\par
+\tab\tab ('Geneva', 'b', 10), \\\par
+\tab\tab ('Monaco', 'p', 10), \\\par
+\tab\tab ]\par
+\tab h1fontset = [ \\\par
+\tab\tab ('Geneva', 'p', 18), \\\par
+\tab\tab ('Geneva', 'i', 18), \\\par
+\tab\tab ('Geneva', 'b', 18), \\\par
+\tab\tab ('Monaco', 'p', 18), \\\par
+\tab\tab ]\par
+\tab h3fontset = [ \\\par
+\tab\tab ('Geneva', 'p', 14), \\\par
+\tab\tab ('Geneva', 'i', 14), \\\par
+\tab\tab ('Geneva', 'b', 14), \\\par
+\tab\tab ('Monaco', 'p', 14), \\\par
+\tab\tab ]\par
+\tab h3fontset = [ \\\par
+\tab\tab ('Geneva', 'p', 12), \\\par
+\tab\tab ('Geneva', 'i', 12), \\\par
+\tab\tab ('Geneva', 'b', 12), \\\par
+\tab\tab ('Monaco', 'p', 12), \\\par
+\tab\tab ]\par
+\par
+\par
+if os.name == 'mac':\par
+\tab StdwinStylesheet = MacStylesheet\par
+else:\par
+\tab StdwinStylesheet = X11Stylesheet\par
+\par
+\par
+class GLStylesheet(NullStylesheet):\par
+\tab stdfontset = [ \\\par
+\tab\tab 'Helvetica 10', \\\par
+\tab\tab 'Helvetica-Italic 10', \\\par
+\tab\tab 'Helvetica-Bold 10', \\\par
+\tab\tab 'Courier 10', \\\par
+\tab\tab ]\par
+\tab h1fontset = [ \\\par
+\tab\tab 'Helvetica 18', \\\par
+\tab\tab 'Helvetica-Italic 18', \\\par
+\tab\tab 'Helvetica-Bold 18', \\\par
+\tab\tab 'Courier 18', \\\par
+\tab\tab ]\par
+\tab h2fontset = [ \\\par
+\tab\tab 'Helvetica 14', \\\par
+\tab\tab 'Helvetica-Italic 14', \\\par
+\tab\tab 'Helvetica-Bold 14', \\\par
+\tab\tab 'Courier 14', \\\par
+\tab\tab ]\par
+\tab h3fontset = [ \\\par
+\tab\tab 'Helvetica 12', \\\par
+\tab\tab 'Helvetica-Italic 12', \\\par
+\tab\tab 'Helvetica-Bold 12', \\\par
+\tab\tab 'Courier 12', \\\par
+\tab\tab ]\par
+\par
+\par
+# Test program -- produces no output but times how long it takes\par
+# to send a document to a null formatter, exclusive of I/O\par
+\par
+def test():\par
+\tab import fmt\par
+\tab import time\par
+\tab import urllib\par
+\tab if sys.argv[1:]: file = sys.argv[1]\par
+\tab else: file = 'test.html'\par
+\tab data = urllib.urlopen(file).read()\par
+\tab t0 = time.time()\par
+\tab fmtr = fmt.WritingFormatter(sys.stdout, 79)\par
+\tab p = FormattingParser(fmtr, NullStylesheet)\par
+\tab p.feed(data)\par
+\tab p.close()\par
+\tab t1 = time.time()\par
+\tab print\par
+\tab print '*** Formatting time:', round(t1-t0, 3), 'seconds.'\par
+\par
+\par
+# Test program using stdwin\par
+\par
+def testStdwin():\par
+\tab import stdwin, fmt\par
+\tab from stdwinevents import *\par
+\tab if sys.argv[1:]: file = sys.argv[1]\par
+\tab else: file = 'test.html'\par
+\tab data = open(file, 'r').read()\par
+\tab window = stdwin.open('testStdwin')\par
+\tab b = None\par
+\tab while 1:\par
+\tab\tab etype, ewin, edetail = stdwin.getevent()\par
+\tab\tab if etype == WE_CLOSE:\par
+\tab\tab\tab break\par
+\tab\tab if etype == WE_SIZE:\par
+\tab\tab\tab window.setdocsize(0, 0)\par
+\tab\tab\tab window.setorigin(0, 0)\par
+\tab\tab\tab window.change((0, 0), (10000, 30000)) # XXX\par
+\tab\tab if etype == WE_DRAW:\par
+\tab\tab\tab if not b:\par
+\tab\tab\tab\tab b = fmt.StdwinBackEnd(window, 1)\par
+\tab\tab\tab\tab f = fmt.BaseFormatter(b.d, b)\par
+\tab\tab\tab\tab p = FormattingParser(f, \\\par
+\tab\tab\tab\tab\tab\tab\tab     MacStylesheet)\par
+\tab\tab\tab\tab p.feed(data)\par
+\tab\tab\tab\tab p.close()\par
+\tab\tab\tab\tab b.finish()\par
+\tab\tab\tab else:\par
+\tab\tab\tab\tab b.redraw(edetail)\par
+\tab window.close()\par
+\par
+\par
+# Test program using GL\par
+\par
+def testGL():\par
+\tab import gl, GL, fmt\par
+\tab if sys.argv[1:]: file = sys.argv[1]\par
+\tab else: file = 'test.html'\par
+\tab data = open(file, 'r').read()\par
+\tab W, H = 600, 600\par
+\tab gl.foreground()\par
+\tab gl.prefsize(W, H)\par
+\tab wid = gl.winopen('testGL')\par
+\tab gl.ortho2(0, W, H, 0)\par
+\tab gl.color(GL.WHITE)\par
+\tab gl.clear()\par
+\tab gl.color(GL.BLACK)\par
+\tab b = fmt.GLBackEnd(wid)\par
+\tab f = fmt.BaseFormatter(b.d, b)\par
+\tab p = FormattingParser(f, GLStylesheet)\par
+\tab p.feed(data)\par
+\tab p.close()\par
+\tab b.finish()\par
+\tab #\par
+\tab import time\par
+\tab time.sleep(5)\par
+\par
+\par
+if __name__ == '__main__':\par
+\tab test()\par
+\par
+\par
+}
+ 

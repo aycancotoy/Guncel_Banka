@@ -1,0 +1,256 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset162 Microsoft Sans Serif;}}
+\viewkind4\uc1\pard\lang1055\f0\fs17\par
+from Tkinter import *\par
+\par
+# some vocabulary to keep from getting confused. This terminology \par
+# is something I cooked up for this file, but follows the man pages \par
+# pretty closely\par
+# \par
+# \par
+# \par
+#       This is a MENUBUTTON\par
+#       V\par
+# +-------------+\par
+# |             |\par
+# \par
+# +------------++------------++------------+\par
+# |            ||            ||            |\par
+# |  File      ||  Edit      || Options    |   <-------- the MENUBAR\par
+# |            ||            ||            |\par
+# +------------++------------++------------+\par
+# | New...         |\par
+# | Open...        |\par
+# | Print          |\par
+# |                |  <-------- This is a MENU. The lines of text in the menu are\par
+# |                |                            MENU ENTRIES\par
+# |                +---------------+\par
+# | Open Files >   | file1         |               \par
+# |                | file2         |\par
+# |                | another file  | <------ this cascading part is also a MENU\par
+# +----------------|               |\par
+#                  |               |\par
+#                  |               |\par
+#                  |               |\par
+#                  +---------------+\par
+\par
+\par
+\par
+# some miscellaneous callbacks\par
+def new_file():\par
+    print "opening new file"\par
+\par
+def open_file():\par
+    print "opening OLD file"\par
+\par
+def print_something():\par
+    print "picked a menu item"\par
+\par
+\par
+\par
+anchovies = 0\par
+\par
+def print_anchovies():\par
+    global anchovies\par
+    anchovies = not anchovies\par
+    print "anchovies?", anchovies\par
+\par
+def makeCommandMenu():\par
+    # make menu button \par
+    Command_button = Menubutton(mBar, text='Simple Button Commands', \par
+\tab\tab\tab\tab underline=0)\par
+    Command_button.pack(side=LEFT, padx="2m")\par
+    \par
+    # make the pulldown part of the File menu. The parameter passed is the master.\par
+    # we attach it to the button as a python attribute called "menu" by convention.\par
+    # hopefully this isn't too confusing...\par
+    Command_button.menu = Menu(Command_button)\par
+\par
+    # just to be cute, let's disable the undo option:\par
+    Command_button.menu.add_command(label="Undo")\par
+    # undo is the 0th entry...\par
+    Command_button.menu.entryconfig(0, state=DISABLED)\par
+\par
+    Command_button.menu.add_command(label='New...', underline=0, \par
+\tab\tab\tab\tab     command=new_file)\par
+    Command_button.menu.add_command(label='Open...', underline=0, \par
+\tab\tab\tab\tab     command=open_file)\par
+    Command_button.menu.add_command(label='Different Font', underline=0,\par
+\tab\tab\tab\tab     font='-*-helvetica-*-r-*-*-*-180-*-*-*-*-*-*',\par
+\tab\tab\tab\tab     command=print_something)\par
+    \par
+    # we can make bitmaps be menu entries too. File format is X11 bitmap.\par
+    # if you use XV, save it under X11 bitmap format. duh-uh.,..\par
+    Command_button.menu.add_command(\par
+\tab bitmap="info")\par
+\tab #bitmap='@/home/mjc4y/dilbert/project.status.is.doomed.last.panel.bm')\par
+    \par
+    # this is just a line\par
+    Command_button.menu.add('separator')\par
+\par
+    # change the color\par
+    Command_button.menu.add_command(label='Quit', underline=0, \par
+\tab\tab\tab\tab     background='red', \par
+\tab\tab\tab\tab     activebackground='green', \par
+\tab\tab\tab\tab     command=Command_button.quit)\par
+\par
+    # set up a pointer from the file menubutton back to the file menu\par
+    Command_button['menu'] = Command_button.menu\par
+\par
+    return Command_button\par
+\par
+\par
+\par
+def makeCascadeMenu():\par
+    # make menu button \par
+    Cascade_button = Menubutton(mBar, text='Cascading Menus', underline=0)\par
+    Cascade_button.pack(side=LEFT, padx="2m")\par
+    \par
+    # the primary pulldown\par
+    Cascade_button.menu = Menu(Cascade_button)\par
+\par
+    # this is the menu that cascades from the primary pulldown....\par
+    Cascade_button.menu.choices = Menu(Cascade_button.menu)\par
+\par
+    # ...and this is a menu that cascades from that.\par
+    Cascade_button.menu.choices.wierdones = Menu(Cascade_button.menu.choices)\par
+\par
+    # then you define the menus from the deepest level on up.\par
+    Cascade_button.menu.choices.wierdones.add_command(label='avacado')\par
+    Cascade_button.menu.choices.wierdones.add_command(label='belgian endive')\par
+    Cascade_button.menu.choices.wierdones.add_command(label='beefaroni')\par
+\par
+    # definition of the menu one level up...\par
+    Cascade_button.menu.choices.add_command(label='Chocolate')\par
+    Cascade_button.menu.choices.add_command(label='Vanilla')\par
+    Cascade_button.menu.choices.add_command(label='TuttiFruiti')\par
+    Cascade_button.menu.choices.add_command(label='WopBopaLoopBapABopBamBoom')\par
+    Cascade_button.menu.choices.add_command(label='Rocky Road')\par
+    Cascade_button.menu.choices.add_command(label='BubbleGum')\par
+    Cascade_button.menu.choices.add_cascade(\par
+\tab label='Wierd Flavors', \par
+\tab menu=Cascade_button.menu.choices.wierdones)\par
+\par
+    # and finally, the definition for the top level\par
+    Cascade_button.menu.add_cascade(label='more choices', \par
+\tab\tab\tab\tab     menu=Cascade_button.menu.choices)\par
+\par
+    Cascade_button['menu'] = Cascade_button.menu\par
+\par
+    return Cascade_button\par
+\par
+def makeCheckbuttonMenu():\par
+    global fred\par
+    # make menu button \par
+    Checkbutton_button = Menubutton(mBar, text='Checkbutton Menus', \par
+\tab\tab\tab\tab     underline=0)\par
+    Checkbutton_button.pack(side=LEFT, padx='2m')\par
+    \par
+    # the primary pulldown\par
+    Checkbutton_button.menu = Menu(Checkbutton_button)\par
+\par
+    # and all the check buttons. Note that the "variable" "onvalue" and "offvalue" options\par
+    # are not supported correctly at present. You have to do all your application \par
+    # work through the calback.\par
+    Checkbutton_button.menu.add_checkbutton(label='Pepperoni')\par
+    Checkbutton_button.menu.add_checkbutton(label='Sausage')\par
+    Checkbutton_button.menu.add_checkbutton(label='Extra Cheese')\par
+\par
+    # so here's a callback\par
+    Checkbutton_button.menu.add_checkbutton(label='Anchovy', \par
+\tab\tab\tab\tab\tab     command=print_anchovies)\par
+\par
+    # and start with anchovies selected to be on. Do this by \par
+    # calling invoke on this menu option. To refer to the "anchovy" menu\par
+    # entry we need to know it's index. To do this, we use the index method\par
+    # which takes arguments of several forms: \par
+    #\par
+    # argument        what it does\par
+    # -----------------------------------\par
+    # a number        -- this is useless. \par
+    # "last"          -- last option in the menu\par
+    # "none"          -- used with the activate command. see the man page on menus\par
+    # "active"        -- the currently active menu option. A menu option is made active\par
+    #                         with the 'activate' method\par
+    # "@number"       -- where 'number' is an integer and is treated like a y coordinate in pixels\par
+    # string pattern  -- this is the option used below, and attempts to match "labels" using the \par
+    #                    rules of Tcl_StringMatch\par
+    Checkbutton_button.menu.invoke(Checkbutton_button.menu.index('Anchovy'))\par
+\par
+    # set up a pointer from the file menubutton back to the file menu\par
+    Checkbutton_button['menu'] = Checkbutton_button.menu\par
+\par
+    return Checkbutton_button\par
+\par
+\par
+def makeRadiobuttonMenu():\par
+    # make menu button \par
+    Radiobutton_button = Menubutton(mBar, text='Radiobutton Menus', \par
+\tab\tab\tab\tab     underline=0)\par
+    Radiobutton_button.pack(side=LEFT, padx='2m')\par
+    \par
+    # the primary pulldown\par
+    Radiobutton_button.menu = Menu(Radiobutton_button)\par
+\par
+    # and all the Radio buttons. Note that the "variable" "onvalue" and "offvalue" options\par
+    # are not supported correctly at present. You have to do all your application \par
+    # work through the calback.\par
+    Radiobutton_button.menu.add_radiobutton(label='Republican')\par
+    Radiobutton_button.menu.add_radiobutton(label='Democrat')\par
+    Radiobutton_button.menu.add_radiobutton(label='Libertarian')\par
+    Radiobutton_button.menu.add_radiobutton(label='Commie')\par
+    Radiobutton_button.menu.add_radiobutton(label='Facist')\par
+    Radiobutton_button.menu.add_radiobutton(label='Labor Party')\par
+    Radiobutton_button.menu.add_radiobutton(label='Torie')\par
+    Radiobutton_button.menu.add_radiobutton(label='Independent')\par
+    Radiobutton_button.menu.add_radiobutton(label='Anarchist')\par
+    Radiobutton_button.menu.add_radiobutton(label='No Opinion')\par
+\par
+    # set up a pointer from the file menubutton back to the file menu\par
+    Radiobutton_button['menu'] = Radiobutton_button.menu\par
+\par
+    return Radiobutton_button\par
+\par
+\par
+def makeDisabledMenu(): \par
+    Dummy_button = Menubutton(mBar, text='Dead Menu', underline=0)\par
+    Dummy_button.pack(side=LEFT, padx='2m')\par
+\par
+    # this is the standard way of turning off a whole menu\par
+    Dummy_button["state"] = DISABLED\par
+    return Dummy_button\par
+\par
+\par
+#################################################\par
+#### Main starts here ...\par
+root = Tk()\par
+\par
+\par
+# make a menu bar\par
+mBar = Frame(root, relief=RAISED, borderwidth=2)\par
+mBar.pack(fill=X)\par
+\par
+Command_button     = makeCommandMenu()\par
+Cascade_button     = makeCascadeMenu()\par
+Checkbutton_button = makeCheckbuttonMenu()\par
+Radiobutton_button = makeRadiobuttonMenu()\par
+NoMenu             = makeDisabledMenu()\par
+\par
+# finally, install the buttons in the menu bar. \par
+# This allows for scanning from one menubutton to the next.\par
+mBar.tk_menuBar(Command_button, Cascade_button, Checkbutton_button, Radiobutton_button, NoMenu)\par
+\par
+\par
+root.title('menu demo')\par
+root.iconname('menu demo')\par
+\par
+root.mainloop()\par
+\par
+\par
+\par
+\par
+\par
+\par
+\par
+\par
+}
+ 

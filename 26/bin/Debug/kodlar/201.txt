@@ -1,0 +1,353 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset162 Microsoft Sans Serif;}}
+\viewkind4\uc1\pard\lang1055\f0\fs17\par
+#! /usr/bin/env python\par
+\par
+# A simple gopher client.\par
+#\par
+# Usage: gopher [ [selector] host [port] ]\par
+\par
+import string\par
+import sys\par
+import os\par
+import socket\par
+\par
+# Default selector, host and port\par
+DEF_SELECTOR = ''\par
+DEF_HOST     = 'gopher.micro.umn.edu'\par
+DEF_PORT     = 70\par
+\par
+# Recognized file types\par
+T_TEXTFILE  = '0'\par
+T_MENU      = '1'\par
+T_CSO       = '2'\par
+T_ERROR     = '3'\par
+T_BINHEX    = '4'\par
+T_DOS       = '5'\par
+T_UUENCODE  = '6'\par
+T_SEARCH    = '7'\par
+T_TELNET    = '8'\par
+T_BINARY    = '9'\par
+T_REDUNDANT = '+'\par
+T_SOUND     = 's'\par
+\par
+# Dictionary mapping types to strings\par
+typename = \{'0': '<TEXT>', '1': '<DIR>', '2': '<CSO>', '3': '<ERROR>', \\\par
+\tab '4': '<BINHEX>', '5': '<DOS>', '6': '<UUENCODE>', '7': '<SEARCH>', \\\par
+\tab '8': '<TELNET>', '9': '<BINARY>', '+': '<REDUNDANT>', 's': '<SOUND>'\}\par
+\par
+# Oft-used characters and strings\par
+CRLF = '\\r\\n'\par
+TAB = '\\t'\par
+\par
+# Open a TCP connection to a given host and port\par
+def open_socket(host, port):\par
+\tab if not port:\par
+\tab\tab port = DEF_PORT\par
+\tab elif type(port) == type(''):\par
+\tab\tab port = string.atoi(port)\par
+\tab s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\par
+\tab s.connect((host, port))\par
+\tab return s\par
+\par
+# Send a selector to a given host and port, return a file with the reply\par
+def send_request(selector, host, port):\par
+\tab s = open_socket(host, port)\par
+\tab s.send(selector + CRLF)\par
+\tab s.shutdown(1)\par
+\tab return s.makefile('r')\par
+\par
+# Get a menu in the form of a list of entries\par
+def get_menu(selector, host, port):\par
+\tab f = send_request(selector, host, port)\par
+\tab list = []\par
+\tab while 1:\par
+\tab\tab line = f.readline()\par
+\tab\tab if not line:\par
+\tab\tab\tab print '(Unexpected EOF from server)'\par
+\tab\tab\tab break\par
+\tab\tab if line[-2:] == CRLF:\par
+\tab\tab\tab line = line[:-2]\par
+\tab\tab elif line[-1:] in CRLF:\par
+\tab\tab\tab line = line[:-1]\par
+\tab\tab if line == '.':\par
+\tab\tab\tab break\par
+\tab\tab if not line:\par
+\tab\tab\tab print '(Empty line from server)'\par
+\tab\tab\tab continue\par
+\tab\tab typechar = line[0]\par
+\tab\tab parts = string.splitfields(line[1:], TAB)\par
+\tab\tab if len(parts) < 4:\par
+\tab\tab\tab print '(Bad line from server:', `line`, ')'\par
+\tab\tab\tab continue\par
+\tab\tab if len(parts) > 4:\par
+\tab\tab\tab print '(Extra info from server:', parts[4:], ')'\par
+\tab\tab parts.insert(0, typechar)\par
+\tab\tab list.append(parts)\par
+\tab f.close()\par
+\tab return list\par
+\par
+# Get a text file as a list of lines, with trailing CRLF stripped\par
+def get_textfile(selector, host, port):\par
+\tab list = []\par
+\tab get_alt_textfile(selector, host, port, list.append)\par
+\tab return list\par
+\par
+# Get a text file and pass each line to a function, with trailing CRLF stripped\par
+def get_alt_textfile(selector, host, port, func):\par
+\tab f = send_request(selector, host, port)\par
+\tab while 1:\par
+\tab\tab line = f.readline()\par
+\tab\tab if not line:\par
+\tab\tab\tab print '(Unexpected EOF from server)'\par
+\tab\tab\tab break\par
+\tab\tab if line[-2:] == CRLF:\par
+\tab\tab\tab line = line[:-2]\par
+\tab\tab elif line[-1:] in CRLF:\par
+\tab\tab\tab line = line[:-1]\par
+\tab\tab if line == '.':\par
+\tab\tab\tab break\par
+\tab\tab if line[:2] == '..':\par
+\tab\tab\tab line = line[1:]\par
+\tab\tab func(line)\par
+\tab f.close()\par
+\par
+# Get a binary file as one solid data block\par
+def get_binary(selector, host, port):\par
+\tab f = send_request(selector, host, port)\par
+\tab data = f.read()\par
+\tab f.close()\par
+\tab return data\par
+\par
+# Get a binary file and pass each block to a function\par
+def get_alt_binary(selector, host, port, func, blocksize):\par
+\tab f = send_request(selector, host, port)\par
+\tab while 1:\par
+\tab\tab data = f.read(blocksize)\par
+\tab\tab if not data:\par
+\tab\tab\tab break\par
+\tab\tab func(data)\par
+\par
+# A *very* simple interactive browser\par
+\par
+# Browser main command, has default arguments\par
+def browser(*args):\par
+\tab selector = DEF_SELECTOR\par
+\tab host = DEF_HOST\par
+\tab port = DEF_PORT\par
+\tab n = len(args)\par
+\tab if n > 0 and args[0]:\par
+\tab\tab selector = args[0]\par
+\tab if n > 1 and args[1]:\par
+\tab\tab host = args[1]\par
+\tab if n > 2 and args[2]:\par
+\tab\tab port = args[2]\par
+\tab if n > 3:\par
+\tab\tab raise RuntimeError, 'too many args'\par
+\tab try:\par
+\tab\tab browse_menu(selector, host, port)\par
+\tab except socket.error, msg:\par
+\tab\tab print 'Socket error:', msg\par
+\tab\tab sys.exit(1)\par
+\tab except KeyboardInterrupt:\par
+\tab\tab print '\\n[Goodbye]'\par
+\par
+# Browse a menu\par
+def browse_menu(selector, host, port):\par
+\tab list = get_menu(selector, host, port)\par
+\tab while 1:\par
+\tab\tab print '----- MENU -----'\par
+\tab\tab print 'Selector:', `selector`\par
+\tab\tab print 'Host:', host, ' Port:', port\par
+\tab\tab print\par
+\tab\tab for i in range(len(list)):\par
+\tab\tab\tab item = list[i]\par
+\tab\tab\tab typechar, description = item[0], item[1]\par
+\tab\tab\tab print string.rjust(`i+1`, 3) + ':', description,\par
+\tab\tab\tab if typename.has_key(typechar):\par
+\tab\tab\tab\tab print typename[typechar]\par
+\tab\tab\tab else:\par
+\tab\tab\tab\tab print '<TYPE=' + `typechar` + '>'\par
+\tab\tab print\par
+\tab\tab while 1:\par
+\tab\tab\tab try:\par
+\tab\tab\tab\tab str = raw_input('Choice [CR == up a level]: ')\par
+\tab\tab\tab except EOFError:\par
+\tab\tab\tab\tab print\par
+\tab\tab\tab\tab return\par
+\tab\tab\tab if not str:\par
+\tab\tab\tab\tab return\par
+\tab\tab\tab try:\par
+\tab\tab\tab\tab choice = string.atoi(str)\par
+\tab\tab\tab except string.atoi_error:\par
+\tab\tab\tab\tab print 'Choice must be a number; try again:'\par
+\tab\tab\tab\tab continue\par
+\tab\tab\tab if not 0 < choice <= len(list):\par
+\tab\tab\tab\tab print 'Choice out of range; try again:'\par
+\tab\tab\tab\tab continue\par
+\tab\tab\tab break\par
+\tab\tab item = list[choice-1]\par
+\tab\tab typechar = item[0]\par
+\tab\tab [i_selector, i_host, i_port] = item[2:5]\par
+\tab\tab if typebrowser.has_key(typechar):\par
+\tab\tab\tab browserfunc = typebrowser[typechar]\par
+\tab\tab\tab try:\par
+\tab\tab\tab\tab browserfunc(i_selector, i_host, i_port)\par
+\tab\tab\tab except (IOError, socket.error):\par
+\tab\tab\tab\tab print '***', sys.exc_type, ':', sys.exc_value\par
+\tab\tab else:\par
+\tab\tab\tab print 'Unsupported object type'\par
+\par
+# Browse a text file\par
+def browse_textfile(selector, host, port):\par
+\tab x = None\par
+\tab try:\par
+\tab\tab p = os.popen('$\{PAGER-more\}', 'w')\par
+\tab\tab x = SaveLines(p)\par
+\tab\tab get_alt_textfile(selector, host, port, x.writeln)\par
+\tab except IOError, msg:\par
+\tab\tab print 'IOError:', msg\par
+\tab if x:\par
+\tab\tab x.close()\par
+\tab f = open_savefile()\par
+\tab if not f:\par
+\tab\tab return\par
+\tab x = SaveLines(f)\par
+\tab try:\par
+\tab\tab get_alt_textfile(selector, host, port, x.writeln)\par
+\tab\tab print 'Done.'\par
+\tab except IOError, msg:\par
+\tab\tab print 'IOError:', msg\par
+\tab x.close()\par
+\par
+# Browse a search index\par
+def browse_search(selector, host, port):\par
+\tab while 1:\par
+\tab\tab print '----- SEARCH -----'\par
+\tab\tab print 'Selector:', `selector`\par
+\tab\tab print 'Host:', host, ' Port:', port\par
+\tab\tab print\par
+\tab\tab try:\par
+\tab\tab\tab query = raw_input('Query [CR == up a level]: ')\par
+\tab\tab except EOFError:\par
+\tab\tab\tab print\par
+\tab\tab\tab break\par
+\tab\tab query = string.strip(query)\par
+\tab\tab if not query:\par
+\tab\tab\tab break\par
+\tab\tab if '\\t' in query:\par
+\tab\tab\tab print 'Sorry, queries cannot contain tabs'\par
+\tab\tab\tab continue\par
+\tab\tab browse_menu(selector + TAB + query, host, port)\par
+\par
+# "Browse" telnet-based information, i.e. open a telnet session\par
+def browse_telnet(selector, host, port):\par
+\tab if selector:\par
+\tab\tab print 'Log in as', `selector`\par
+\tab if type(port) <> type(''):\par
+\tab\tab port = `port`\par
+\tab sts = os.system('set -x; exec telnet ' + host + ' ' + port)\par
+\tab if sts:\par
+\tab\tab print 'Exit status:', sts\par
+\par
+# "Browse" a binary file, i.e. save it to a file\par
+def browse_binary(selector, host, port):\par
+\tab f = open_savefile()\par
+\tab if not f:\par
+\tab\tab return\par
+\tab x = SaveWithProgress(f)\par
+\tab get_alt_binary(selector, host, port, x.write, 8*1024)\par
+\tab x.close()\par
+\par
+# "Browse" a sound file, i.e. play it or save it\par
+def browse_sound(selector, host, port):\par
+\tab browse_binary(selector, host, port)\par
+\par
+# Dictionary mapping types to browser functions\par
+typebrowser = \{'0': browse_textfile, '1': browse_menu, \\\par
+\tab '4': browse_binary, '5': browse_binary, '6': browse_textfile, \\\par
+\tab '7': browse_search, \\\par
+\tab '8': browse_telnet, '9': browse_binary, 's': browse_sound\}\par
+\par
+# Class used to save lines, appending a newline to each line\par
+class SaveLines:\par
+\tab def __init__(self, f):\par
+\tab\tab self.f = f\par
+\tab def writeln(self, line):\par
+\tab\tab self.f.write(line + '\\n')\par
+\tab def close(self):\par
+\tab\tab sts = self.f.close()\par
+\tab\tab if sts:\par
+\tab\tab\tab print 'Exit status:', sts\par
+\par
+# Class used to save data while showing progress\par
+class SaveWithProgress:\par
+\tab def __init__(self, f):\par
+\tab\tab self.f = f\par
+\tab def write(self, data):\par
+\tab\tab sys.stdout.write('#')\par
+\tab\tab sys.stdout.flush()\par
+\tab\tab self.f.write(data)\par
+\tab def close(self):\par
+\tab\tab print\par
+\tab\tab sts = self.f.close()\par
+\tab\tab if sts:\par
+\tab\tab\tab print 'Exit status:', sts\par
+\par
+# Ask for and open a save file, or return None if not to save\par
+def open_savefile():\par
+\tab try:\par
+\tab\tab savefile = raw_input( \\\par
+\tab     'Save as file [CR == don\\'t save; |pipeline or ~user/... OK]: ')\par
+\tab except EOFError:\par
+\tab\tab print\par
+\tab\tab return None\par
+\tab savefile = string.strip(savefile)\par
+\tab if not savefile:\par
+\tab\tab return None\par
+\tab if savefile[0] == '|':\par
+\tab\tab cmd = string.strip(savefile[1:])\par
+\tab\tab try:\par
+\tab\tab\tab p = os.popen(cmd, 'w')\par
+\tab\tab except IOError, msg:\par
+\tab\tab\tab print `cmd`, ':', msg\par
+\tab\tab\tab return None\par
+\tab\tab print 'Piping through', `cmd`, '...'\par
+\tab\tab return p\par
+\tab if savefile[0] == '~':\par
+\tab\tab savefile = os.path.expanduser(savefile)\par
+\tab try:\par
+\tab\tab f = open(savefile, 'w')\par
+\tab except IOError, msg:\par
+\tab\tab print `savefile`, ':', msg\par
+\tab\tab return None\par
+\tab print 'Saving to', `savefile`, '...'\par
+\tab return f\par
+\par
+# Test program\par
+def test():\par
+\tab if sys.argv[4:]:\par
+\tab\tab print 'usage: gopher [ [selector] host [port] ]'\par
+\tab\tab sys.exit(2)\par
+\tab elif sys.argv[3:]:\par
+\tab\tab browser(sys.argv[1], sys.argv[2], sys.argv[3])\par
+\tab elif sys.argv[2:]:\par
+\tab\tab try:\par
+\tab\tab\tab port = string.atoi(sys.argv[2])\par
+\tab\tab\tab selector = ''\par
+\tab\tab\tab host = sys.argv[1]\par
+\tab\tab except string.atoi_error:\par
+\tab\tab\tab selector = sys.argv[1]\par
+\tab\tab\tab host = sys.argv[2]\par
+\tab\tab\tab port = ''\par
+\tab\tab browser(selector, host, port)\par
+\tab elif sys.argv[1:]:\par
+\tab\tab browser('', sys.argv[1])\par
+\tab else:\par
+\tab\tab browser()\par
+\par
+# Call the test program as a main program\par
+test()\par
+\par
+\par
+}
+ 

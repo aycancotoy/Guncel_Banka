@@ -1,0 +1,362 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset162 Microsoft Sans Serif;}}
+\viewkind4\uc1\pard\lang1055\f0\fs17\par
+#! /usr/bin/env python\par
+\par
+# A miniature multi-window editor using STDWIN's text objects.\par
+#\par
+# Usage: miniedit [file] ...\par
+#\par
+# The user interface is similar to that of the miniedit demo application\par
+# in C that comes with STDWIN.\par
+#\par
+# XXX need to comment the functions\par
+# XXX Not yet implemented:\par
+#\tab disabling menu entries for inapplicable actions\par
+#\tab Find operations\par
+\par
+\par
+import sys\par
+import stdwin\par
+from stdwinevents import *\par
+\par
+\par
+# Constant: list of WE_COMMAND events that (may) change the text buffer\par
+# so we can decide whether to set the 'changed' flag.\par
+# Note that it is possible for such a command to fail (a backspace\par
+# at the beginning of the buffer) but we'll set the changed flag anyway\par
+# -- it's too complicated to check this condition right now.\par
+#\par
+changing = [WC_RETURN, WC_TAB, WC_BACKSPACE]\par
+\par
+\par
+# The list of currently open windows;\par
+# this is maintained so we can stop when there are no windows left\par
+#\par
+windows = []\par
+\par
+\par
+# A note on window data attributes (set by open_window):\par
+#\par
+# w.textobject\tab the window's text object\par
+# w.changed\tab true when the window's text is changed\par
+# w.filename\tab filename connected to the window; '' if none\par
+\par
+\par
+# Main program\par
+#\par
+def main():\par
+\tab #\par
+\tab # Set a reasonable default window size.\par
+\tab # If we are using a fixed-width font this will open a 80x24 window;\par
+\tab # for variable-width fonts we approximate this based on an average\par
+\tab #\par
+\tab stdwin.setdefwinsize(40*stdwin.textwidth('in'), 24*stdwin.lineheight())\par
+\tab #\par
+\tab # Create global menus (as local variables)\par
+\tab #\par
+\tab filemenu = make_file_menu(stdwin)\par
+\tab editmenu = make_edit_menu(stdwin)\par
+\tab findmenu = make_find_menu(stdwin)\par
+\tab #\par
+\tab # Get the list of files from the command line (maybe none)\par
+\tab #\par
+\tab files = sys.argv[1:]\par
+\tab #\par
+\tab # Open any files -- errors will be reported but do won't stop us\par
+\tab #\par
+\tab for filename in files:\par
+\tab\tab open_file(filename)\par
+\tab #\par
+\tab # If there were no files, or none of them could be opened,\par
+\tab # put up a dialog asking for a filename\par
+\tab #\par
+\tab if not windows:\par
+\tab\tab try:\par
+\tab\tab\tab open_dialog(None)\par
+\tab\tab except KeyboardInterrupt:\par
+\tab\tab\tab pass\tab\tab # User cancelled\par
+\tab #\par
+\tab # If the dialog was cancelled, create an empty new window\par
+\tab #\par
+\tab if not windows:\par
+\tab\tab new_window(None)\par
+\tab #\par
+\tab # Main event loop -- stop when we have no open windows left\par
+\tab #\par
+\tab while windows:\par
+\tab\tab #\par
+\tab\tab # Get the next event -- ignore interrupts\par
+\tab\tab #\par
+\tab\tab try:\par
+\tab\tab\tab type, window, detail = event = stdwin.getevent()\par
+\tab\tab except KeyboardInterrupt:\par
+\tab\tab\tab type, window, detail = event = WE_NONE, None, None\par
+\tab\tab #\par
+\tab\tab # Event decoding switch\par
+\tab\tab #\par
+\tab\tab if not window:\par
+\tab\tab\tab pass\tab\tab # Ignore such events\par
+\tab\tab elif type == WE_MENU:\par
+\tab\tab\tab #\par
+\tab\tab\tab # Execute menu operation\par
+\tab\tab\tab #\par
+\tab\tab\tab menu, item = detail\par
+\tab\tab\tab try:\par
+\tab\tab\tab\tab menu.actions[item](window)\par
+\tab\tab\tab except KeyboardInterrupt:\par
+\tab\tab\tab\tab pass\tab # User cancelled\par
+\tab\tab elif type == WE_CLOSE:\par
+\tab\tab\tab #\par
+\tab\tab\tab # Close a window\par
+\tab\tab\tab #\par
+\tab\tab\tab try:\par
+\tab\tab\tab\tab close_dialog(window)\par
+\tab\tab\tab except KeyboardInterrupt:\par
+\tab\tab\tab\tab pass\tab # User cancelled\par
+\tab\tab elif type == WE_SIZE:\par
+\tab\tab\tab #\par
+\tab\tab\tab # A window was resized --\par
+\tab\tab\tab # let the text object recompute the line breaks\par
+\tab\tab\tab # and change the document size accordingly,\par
+\tab\tab\tab # so scroll bars will work\par
+\tab\tab\tab #\par
+\tab\tab\tab fix_textsize(window)\par
+\tab\tab elif window.textobject.event(event):\par
+\tab\tab\tab #\par
+\tab\tab\tab # The event was eaten by the text object --\par
+\tab\tab\tab # set the changed flag if not already set\par
+\tab\tab\tab #\par
+\tab\tab\tab if type == WE_CHAR or \\\par
+\tab\tab\tab    type == WE_COMMAND and detail in changing:\par
+\tab\tab\tab\tab window.changed = 1\par
+\tab\tab\tab\tab fix_docsize(window)\par
+\tab\tab #\par
+\tab\tab # Delete all objects that may still reference the window\par
+\tab\tab # in the event -- this is needed otherwise the window\par
+\tab\tab # won't actually be closed and may receive further\par
+\tab\tab # events, which will confuse the event decoder\par
+\tab\tab #\par
+\tab\tab del type, window, detail, event\par
+\par
+\par
+def make_file_menu(object):\par
+\tab menu = object.menucreate('File')\par
+\tab menu.actions = []\par
+\tab additem(menu, 'New',\tab\tab 'N', new_window)\par
+\tab additem(menu, 'Open..',\tab\tab 'O', open_dialog)\par
+\tab additem(menu, '',\tab\tab '',  None)\par
+\tab additem(menu, 'Save',\tab\tab 'S', save_dialog)\par
+\tab additem(menu, 'Save As..',\tab '',  save_as_dialog)\par
+\tab additem(menu, 'Save a Copy..',\tab '',  save_copy_dialog)\par
+\tab additem(menu, 'Revert',\tab\tab 'R', revert_dialog)\par
+\tab additem(menu, 'Quit',\tab\tab 'Q', quit_dialog)\par
+\tab return menu\par
+\par
+\par
+def make_edit_menu(object):\par
+\tab menu = object.menucreate('Edit')\par
+\tab menu.actions = []\par
+\tab additem(menu, 'Cut',\tab\tab 'X', do_cut)\par
+\tab additem(menu, 'Copy',\tab\tab 'C', do_copy)\par
+\tab additem(menu, 'Paste',\tab\tab 'V', do_paste)\par
+\tab additem(menu, 'Clear',\tab\tab 'B', do_clear)\par
+\tab additem(menu, 'Select All',\tab 'A', do_select_all)\par
+\tab return menu\par
+\par
+\par
+def make_find_menu(object):\par
+\tab menu = object.menucreate('Find')\par
+\tab menu.actions = []\par
+\tab # XXX\par
+\tab return menu\par
+\par
+\par
+def additem(menu, text, shortcut, function):\par
+\tab if shortcut:\par
+\tab\tab menu.additem(text, shortcut)\par
+\tab else:\par
+\tab\tab menu.additem(text)\par
+\tab menu.actions.append(function)\par
+\par
+\par
+def open_dialog(current_ignored):\par
+\tab filename = stdwin.askfile('Open file:', '', 0)\par
+\tab open_file(filename)\par
+\par
+\par
+def open_file(filename):\par
+\tab try:\par
+\tab\tab fp = open(filename, 'r')\par
+\tab except RuntimeError:\par
+\tab\tab stdwin.message(filename + ': cannot open')\par
+\tab\tab return\tab\tab\tab # Error, forget it\par
+\tab try:\par
+\tab\tab contents = fp.read()\par
+\tab except RuntimeError:\par
+\tab\tab stdwin.message(filename + ': read error')\par
+\tab\tab return\tab\tab\tab # Error, forget it\par
+\tab del fp\tab\tab\tab\tab # Close the file\par
+\tab open_window(filename, filename, contents)\par
+\par
+\par
+def new_window(current_ignored):\par
+\tab open_window('', 'Untitled', '')\par
+\par
+\par
+def open_window(filename, title, contents):\par
+\tab try:\par
+\tab\tab window = stdwin.open(title)\par
+\tab except RuntimeError:\par
+\tab\tab stdwin.message('cannot open new window')\par
+\tab\tab return\tab\tab\tab # Error, forget it\par
+\tab window.textobject = window.textcreate((0, 0), window.getwinsize())\par
+\tab window.textobject.settext(contents)\par
+\tab window.changed = 0\par
+\tab window.filename = filename\par
+\tab fix_textsize(window)\par
+\tab windows.append(window)\par
+\par
+\par
+def quit_dialog(window):\par
+\tab for window in windows[:]:\par
+\tab\tab close_dialog(window)\par
+\par
+\par
+def close_dialog(window):\par
+\tab if window.changed:\par
+\tab\tab prompt = 'Save changes to ' + window.gettitle() + ' ?'\par
+\tab\tab if stdwin.askync(prompt, 1):\par
+\tab\tab\tab save_dialog(window)\par
+\tab\tab\tab if window.changed:\par
+\tab\tab\tab\tab return\tab # Save failed (not) cancelled\par
+\tab windows.remove(window)\par
+\tab del window.textobject\par
+\par
+\par
+def save_dialog(window):\par
+\tab if not window.filename:\par
+\tab\tab save_as_dialog(window)\par
+\tab\tab return\par
+\tab if save_file(window, window.filename):\par
+\tab\tab window.changed = 0\par
+\par
+\par
+def save_as_dialog(window):\par
+\tab prompt = 'Save ' + window.gettitle() + ' as:'\par
+\tab filename = stdwin.askfile(prompt, window.filename, 1)\par
+\tab if save_file(window, filename):\par
+\tab\tab window.filename = filename\par
+\tab\tab window.settitle(filename)\par
+\tab\tab window.changed = 0\par
+\par
+\par
+def save_copy_dialog(window):\par
+\tab prompt = 'Save a copy of ' + window.gettitle() + ' as:'\par
+\tab filename = stdwin.askfile(prompt, window.filename, 1)\par
+\tab void = save_file(window, filename)\par
+\par
+\par
+def save_file(window, filename):\par
+\tab try:\par
+\tab\tab fp = open(filename, 'w')\par
+\tab except RuntimeError:\par
+\tab\tab stdwin.message(filename + ': cannot create')\par
+\tab\tab return 0\par
+\tab contents = window.textobject.gettext()\par
+\tab try:\par
+\tab\tab fp.write(contents)\par
+\tab except RuntimeError:\par
+\tab\tab stdwin.message(filename + ': write error')\par
+\tab\tab return 0\par
+\tab return 1\par
+\par
+\par
+def revert_dialog(window):\par
+\tab if not window.filename:\par
+\tab\tab stdwin.message('This window has no file to revert from')\par
+\tab\tab return\par
+\tab if window.changed:\par
+\tab\tab prompt = 'Really read ' + window.filename + ' back from file?'\par
+\tab\tab if not stdwin.askync(prompt, 1):\par
+\tab\tab\tab return\par
+\tab try:\par
+\tab\tab fp = open(window.filename, 'r')\par
+\tab except RuntimeError:\par
+\tab\tab stdwin.message(filename + ': cannot open')\par
+\tab\tab return\par
+\tab contents = fp.read()\par
+\tab del fp\tab\tab\tab\tab # Close the file\par
+\tab window.textobject.settext(contents)\par
+\tab window.changed = 0\par
+\tab fix_docsize(window)\par
+\par
+\par
+def fix_textsize(window):\par
+\tab corner = window.getwinsize()\par
+\tab area = (0, 0), (corner)\par
+\tab window.textobject.move(area)\par
+\tab fix_docsize(window)\par
+\par
+\par
+def fix_docsize(window):\par
+\tab area = window.textobject.getrect()\par
+\tab origin, corner = area\par
+\tab width, height = corner\par
+\tab window.setdocsize(0, height)\par
+\par
+\par
+def do_cut(window):\par
+\tab selection = window.textobject.getfocustext()\par
+\tab if not selection:\par
+\tab\tab stdwin.fleep()\tab\tab # Nothing to cut\par
+\tab elif not window.setselection(WS_PRIMARY, selection):\par
+\tab\tab stdwin.fleep()\tab\tab # Window manager glitch...\par
+\tab else:\par
+\tab\tab stdwin.rotatecutbuffers(1)\par
+\tab\tab stdwin.setcutbuffer(0, selection)\par
+\tab\tab window.textobject.replace('')\par
+\tab\tab window.changed = 1\par
+\tab\tab fix_docsize(window)\par
+\par
+\par
+def do_copy(window):\par
+\tab selection = window.textobject.getfocustext()\par
+\tab if not selection:\par
+\tab\tab stdwin.fleep()\tab\tab # Nothing to cut\par
+\tab elif not window.setselection(WS_PRIMARY, selection):\par
+\tab\tab stdwin.fleep()\tab\tab # Window manager glitch...\par
+\tab else:\par
+\tab\tab stdwin.rotatecutbuffers(1)\par
+\tab\tab stdwin.setcutbuffer(0, selection)\par
+\par
+\par
+def do_paste(window):\par
+\tab selection = stdwin.getselection(WS_PRIMARY)\par
+\tab if not selection:\par
+\tab\tab selection = stdwin.getcutbuffer(0)\par
+\tab if not selection:\par
+\tab\tab stdwin.fleep()\tab\tab # Nothing to paste\par
+\tab else:\par
+\tab\tab window.textobject.replace(selection)\par
+\tab\tab window.changed = 1\par
+\tab\tab fix_docsize(window)\par
+\par
+def do_clear(window):\par
+\tab first, last = window.textobject.getfocus()\par
+\tab if first == last:\par
+\tab\tab stdwin.fleep()\tab\tab # Nothing to clear\par
+\tab else:\par
+\tab\tab window.textobject.replace('')\par
+\tab\tab window.changed = 1\par
+\tab\tab fix_docsize(window)\par
+\par
+\par
+def do_select_all(window):\par
+\tab window.textobject.setfocus(0, 0x7fffffff) # XXX Smaller on the Mac!\par
+\par
+\par
+main()\par
+\par
+\par
+}
+ 

@@ -1,0 +1,10 @@
+obj\Debug\url 15.exe
+obj\Debug\url 15.xml
+obj\Debug\url 15.pdb
+bin\Debug\url 15.exe
+bin\Debug\url 15.pdb
+bin\Debug\url 15.xml
+obj\Debug\ResolveAssemblyReference.cache
+obj\Debug\url_15.Form1.resources
+obj\Debug\url_15.Resources.resources
+obj\Debug\url 15.vbproj.GenerateResource.Cache

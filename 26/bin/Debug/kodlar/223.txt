@@ -1,0 +1,432 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset162 Microsoft Sans Serif;}}
+\viewkind4\uc1\pard\lang1055\f0\fs17\par
+#! /usr/bin/env python\par
+# Simulate the artwork in the hall.\par
+# Jack Jansen, Feb 91.\par
+\par
+from gl import *\par
+from GL import *\par
+from math import *\par
+from DEVICE import *\par
+import sys\par
+import __main__\par
+main_dict = __main__.__dict__\par
+\par
+SPOTDIRECTION = 103\par
+SPOTLIGHT = 104\par
+\par
+#\par
+# Make a cylinder paralel with the Z axis with center (X,Y,0)\par
+# and radius 1\par
+def mkcyl(nslice, nparts, docircle):\par
+        cyl = []\par
+        step = 2.0 / float(nslice)\par
+        z = -1.0\par
+        for i in range(nslice):\par
+            cyl.append(mkslice(z, z+step, nparts, docircle))\par
+            z = z + step\par
+        return drawcylinder(cyl)\par
+#\par
+# Make one part of a cylinder\par
+#\par
+def mkslice(z1, z2, nparts, docircle):\par
+        if docircle:\par
+            w1 = z1\par
+            w2 = z2\par
+            w1 = sqrt(1.0-w1*w1)\par
+            w2 = sqrt(1.0-w2*w2)\par
+            normalz = 1.0\par
+        else:\par
+            w1 = 1.0\par
+            w2 = 1.0\par
+            normalz = 0.0\par
+        slice = []\par
+        step = (2.0*pi)/float(nparts)\par
+        angle = 0.0\par
+        for i in range(nparts+1):\par
+            vx = cos(angle)\par
+            vy = sin(angle)\par
+            slice.append( ((vx*w1,vy*w1,z1), (vx*w1, vy*w1, z1*normalz)) )\par
+            slice.append( ((vx*w2,vy*w2,z2), (vx*w2, vy*w2, z2*normalz)) )\par
+            angle = angle + step\par
+        return slice\par
+#\par
+# Drawcylinder : draw the cylinder\par
+#\par
+class struct: pass\par
+curobj = struct()\par
+curobj.curobj = 1\par
+def drawcylinder(cyl):\par
+        obj = curobj.curobj\par
+        curobj.curobj = curobj.curobj+1\par
+        makeobj(obj)\par
+        for slice in cyl:\par
+            bgntmesh()\par
+            vnarray(slice)\par
+            endtmesh()\par
+        closeobj()\par
+        return obj\par
+#\par
+def drawnormals(cyl):\par
+        for slice in cyl:\par
+            for triang in slice:\par
+                bgnline()\par
+                v3f(triang[0])\par
+                v3f(triang[0][0] + triang[1][0], triang[0][1] + triang[1][1], triang[0][2] + triang[1][2])\par
+                endline()\par
+def drawfloors():\par
+        obj = curobj.curobj\par
+        curobj.curobj = curobj.curobj+1\par
+        makeobj(obj)\par
+        bgnpolygon()\par
+        v3i(4,6,-6)\par
+        v3i(-6,6,-6)\par
+        v3i(-6,-6,-6)\par
+        v3i(4,-6,-6)\par
+        endpolygon()\par
+        for floor in range(3):\par
+            pos = -1 + 5*floor\par
+            bgnpolygon()\par
+            v3i(4,4,pos)\par
+            v3i(-6,4,pos)\par
+            v3i(-6,6,pos)\par
+            v3i(4,6,pos)\par
+            endpolygon()\par
+            bgnpolygon()\par
+            v3i(-4,4,pos)\par
+            v3i(-4,-4,pos)\par
+            v3i(-6,-4,pos)\par
+            v3i(-6,4,pos)\par
+            endpolygon()\par
+            bgnpolygon()\par
+            v3i(-6,-4,pos)\par
+            v3i(-6,-6,pos)\par
+            v3i(4,-6,pos)\par
+            v3i(4,-4,pos)\par
+            endpolygon()\par
+        closeobj()\par
+        return obj\par
+def drawdoors():\par
+        obj = curobj.curobj\par
+        curobj.curobj = curobj.curobj+1\par
+        makeobj(obj)\par
+        for floor in range(3):\par
+            pos = -1+5*floor\par
+            bgnpolygon()\par
+            v3i(-2,6,pos)\par
+            v3i(-2,6,pos+3)\par
+            v3i(0,6,pos+3)\par
+            v3i(0,6,pos)\par
+            endpolygon()\par
+        closeobj()\par
+        return obj\par
+def drawrailing():\par
+        obj = curobj.curobj\par
+        curobj.curobj = curobj.curobj+1\par
+        makeobj(obj)\par
+        for floor in range(3):\par
+            pos = -1 + 5*floor\par
+            bgnpolygon()\par
+            v3i(4,4,pos)\par
+            v3i(4,4,pos-1)\par
+            v3i(-4,4,pos-1)\par
+            v3i(-4,4,pos)\par
+            endpolygon()\par
+            bgnpolygon()\par
+            v3i(-4,4,pos)\par
+            v3i(-4,4,pos-1)\par
+            v3i(-4,-4,pos-1)\par
+            v3i(-4,-4,pos)\par
+            endpolygon()\par
+            bgnpolygon()\par
+            v3i(-4,-4,pos)\par
+            v3i(-4,-4,pos-1)\par
+            v3i(4,-4,pos-1)\par
+            v3i(4,-4,pos)\par
+            endpolygon()\par
+        closeobj()\par
+        return obj\par
+def drawwalls():\par
+        obj = curobj.curobj\par
+        curobj.curobj = curobj.curobj+1\par
+        makeobj(obj)\par
+        bgnpolygon()\par
+        v3i(4,6,-6)\par
+        v3i(4,6,18)\par
+        v3i(-6,6,18)\par
+        v3i(-6,6,-6)\par
+        endpolygon()\par
+        bgnpolygon()\par
+        v3i(-6,6,-6)\par
+        v3i(-6,6,18)\par
+        v3i(-6,-6,18)\par
+        v3i(-6,-6,-6)\par
+        endpolygon()\par
+        bgnpolygon()\par
+        v3i(-6,-6,-6)\par
+        v3i(-6,-6,18)\par
+        v3i(4,-6,18)\par
+        v3i(4,-6,-6)\par
+        endpolygon()\par
+        bgnpolygon()\par
+        v3i(4,-6,-6)\par
+        v3i(4,-6,18)\par
+        v3i(4,4,18)\par
+        v3i(4,4,-6)\par
+        endpolygon()\par
+        closeobj()\par
+        return obj\par
+def axis():\par
+        bgnline()\par
+        cpack(0xff0000)\par
+        v3i(-1,0,0)\par
+        v3i(1,0,0)\par
+        v3f(1.0, 0.1, 0.1)\par
+        endline()\par
+        bgnline()\par
+        cpack(0xff00)\par
+        v3i(0,-1,0)\par
+        v3i(0,1,0)\par
+        v3f(0.1, 1.0, 0.1)\par
+        endline()\par
+        bgnline()\par
+        cpack(0xff)\par
+        v3i(0,0,-1)\par
+        v3i(0,0,1)\par
+        v3f(0.1,0.1,1.0)\par
+        endline()\par
+#\par
+green_velvet = [ DIFFUSE, 0.05, 0.4, 0.05, LMNULL]\par
+silver = [ DIFFUSE, 0.3, 0.3, 0.3, SPECULAR, 0.9, 0.9, 0.95, \\\par
+        SHININESS, 40.0, LMNULL]\par
+floormat = [ AMBIENT, 0.5, 0.25, 0.15, DIFFUSE, 0.5, 0.25, 0.15, SPECULAR, 0.6, 0.3, 0.2, SHININESS, 20.0, LMNULL]\par
+wallmat = [ DIFFUSE, 0.4, 0.2, 0.1, AMBIENT, 0.4, 0.20, 0.10, SPECULAR, 0.0, 0.0, 0.0, SHININESS, 20.0, LMNULL]\par
+offwhite = [ DIFFUSE, 0.8, 0.8, 0.6, AMBIENT, 0.8, 0.8, 0.6, SPECULAR, 0.9, 0.9, 0.9, SHININESS, 30.0, LMNULL]\par
+doormat = [ DIFFUSE, 0.1, 0.2, 0.5, AMBIENT, 0.2, 0.4, 1.0, SPECULAR, 0.2, 0.4, 1.0, SHININESS, 60.0, LMNULL]\par
+\par
+toplight = [ LCOLOR, 1.0, 1.0, 0.5, \\\par
+        POSITION, 0.0, 0.0, 11.0, 1.0, LMNULL]\par
+floor1light = [ LCOLOR, 1.0, 1.0, 1.0, POSITION, 3.9, -3.9, 0.0, 1.0, \\\par
+        SPOTDIRECTION, 1.0, 1.0, 0.0, SPOTLIGHT, 10.0, 90.0, LMNULL]\par
+\par
+lmodel = [ AMBIENT, 0.92, 0.8, 0.5, LOCALVIEWER, 1.0, LMNULL]\par
+#\par
+def lighting():\par
+        lmdef(DEFMATERIAL, 1, green_velvet)\par
+        lmdef(DEFMATERIAL, 2, silver)\par
+        lmdef(DEFMATERIAL, 3, floormat)\par
+        lmdef(DEFMATERIAL, 4, wallmat)\par
+        lmdef(DEFMATERIAL, 5, offwhite)\par
+        lmdef(DEFMATERIAL, 6, doormat)\par
+        lmdef(DEFLIGHT, 1, toplight)\par
+        lmdef(DEFLIGHT, 2, floor1light)\par
+        lmdef(DEFLMODEL, 1, lmodel)\par
+        lmbind(MATERIAL, 1)\par
+        lmbind(LIGHT0, 1)\par
+        lmbind(LIGHT1, 2)\par
+        lmbind(LMODEL, 1)\par
+IdMat=[1.0,0.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0]\par
+#\par
+def defun(axis):\par
+        done = 0\par
+        while not done:\par
+            print 'F'+axis+'(t) = ',\par
+            s = sys.stdin.readline(100)\par
+            print\par
+            try:\par
+                s = 'def f'+axis+'(t): return '+s\par
+                exec(s, main_dict)\par
+                done = 1\par
+            except RuntimeError:\par
+                print 'Sorry, there is a syntax error in your expression'\par
+def getfunctions():\par
+        print 'Welcome to the CWI art simulator. You can now enter X, Y and Z'\par
+        print 'coordinates as a function of t.'\par
+        print 'Normal trig functions are available. Please use floating point'\par
+        print 'values only (so 0.0 for 0). Comments to jack@cwi.nl'\par
+        defun('x')\par
+        defun('y')\par
+        defun('z')\par
+        print 'Ok, here you go. Use mouse+right button to move up/down,'\par
+        print 'mouse+middle to speed up/slow down time. type ESC to quit simulation'\par
+def main():\par
+        getfunctions()\par
+        foreground()\par
+        prefposition(100,600,100,600)\par
+        void = winopen('cyl')\par
+        qdevice(ESCKEY)\par
+        qdevice(MOUSE1)\par
+        qdevice(MOUSE2)\par
+        qdevice(PKEY)\par
+        RGBmode()\par
+        doublebuffer()\par
+        gconfig()\par
+        zbuffer(1)\par
+        mmode(MVIEWING)\par
+        perspective(400, 1.0, 1.0, 20.0)\par
+        loadmatrix(IdMat)\par
+        vx = 0.0\par
+        vy = -6.0\par
+        vz = 0.0\par
+        lookat(0.0, -6.0, 0.0, 0.0, 0.0, 0.0, 0)\par
+        lighting()\par
+        t = -1.0\par
+        step = 1.0\par
+        bol = mkcyl(12,24, 1)\par
+        cable = mkcyl(1, 6, 0)\par
+        floors = drawfloors()\par
+        walls = drawwalls()\par
+        pillar = mkcyl(1,4,0)\par
+        railing = drawrailing()\par
+        doors = drawdoors()\par
+        shademodel(GOURAUD)\par
+        mousing = -1\par
+        pausing = 0\par
+        while 1:\par
+            #\par
+            # Check for some user input\par
+            #\par
+            if qtest():\par
+                dev, value = qread()\par
+                if dev == PKEY and value == 1:\par
+                        pausing = 1\par
+                if dev == ESCKEY:\par
+                    break\par
+                elif (dev==MOUSE1 or dev==MOUSE2) and value == 1:\par
+                    if mousing > 0:\par
+                        vx = 0.0\par
+                        vy = -6.0\par
+                        vz = 0.0\par
+                    mousing = dev\par
+                    oldx = getvaluator(MOUSEX)\par
+                    oldy = getvaluator(MOUSEY)\par
+                elif (dev==MOUSE1 or dev==MOUSE2):\par
+                    mousing = -1\par
+            if mousing >= 0:\par
+                newx = getvaluator(MOUSEX)\par
+                newy = getvaluator(MOUSEY)\par
+                if newy <> oldy and mousing==MOUSE1:\par
+                    vz = vz + float(newy - oldy)/100.0\par
+                    dist = sqrt(vx*vx + vy*vy + vz*vz)\par
+                    perspective(400, 1.0, 1.0, dist+16.0)\par
+                    loadmatrix(IdMat)\par
+                    if vz < 0.0:\par
+                        lookat(vx, vy, vz, 0.0, 0.0, 0.0, 1800)\par
+                    else:\par
+                        lookat(vx, vy, vz, 0.0, 0.0, 0.0, 0)\par
+                if newy <> oldy and mousing==MOUSE2:\par
+                    step = step * exp(float(newy-oldy)/400.0)\par
+            if getbutton(CTRLKEY) == 0:\par
+                t = t + step\par
+            else:\par
+                t = t - step\par
+            if getbutton(LEFTSHIFTKEY) == 0:\par
+                shademodel(GOURAUD)\par
+            else:\par
+                shademodel(FLAT)\par
+            #\par
+            # Draw background and axis\par
+            cpack(0x105090)\par
+            clear()\par
+            zclear()\par
+            cpack(0x905010)\par
+            axis()\par
+            #\par
+            # Draw object\par
+            #\par
+            bolx = fx(t)\par
+            boly = fy(t)\par
+            bolz = fz(t)\par
+            err = ''\par
+            if bolx < -4.0 or bolx > 4.0:\par
+                err = 'X('+`bolx`+') out of range [-4,4]'\par
+            if boly < -4.0 or boly > 4.0:\par
+                err = 'Y('+`boly`+') out of range [-4,4]'\par
+            if bolz < -4.0 or bolz > 8.0:\par
+                err = 'Z('+`bolz`+') out of range [-4,8]'\par
+            if not err:\par
+                pushmatrix()\par
+                translate(bolx, boly, bolz)\par
+                scale(0.3, 0.3, 0.3)\par
+                lmbind(MATERIAL, 2)\par
+                callobj(bol)\par
+                popmatrix()\par
+                #\par
+                # Draw the cables\par
+                #\par
+                bolz = bolz + 0.3\par
+                pushmatrix()\par
+                linesmooth(SML_ON)\par
+                bgnline()\par
+                v3i(-4,-4,9)\par
+                v3f(bolx, boly, bolz)\par
+                endline()\par
+                bgnline()\par
+                v3i(-4,4,9)\par
+                v3f(bolx, boly, bolz)\par
+                endline()\par
+                bgnline()\par
+                v3i(4,-4,9)\par
+                v3f(bolx, boly, bolz)\par
+                endline()\par
+                bgnline()\par
+                v3i(4,4,9)\par
+                v3f(bolx, boly, bolz)\par
+                endline()\par
+                popmatrix()\par
+            #\par
+            # draw the floors\par
+            #\par
+            lmbind(MATERIAL, 3)\par
+            callobj(floors)\par
+            lmbind(MATERIAL, 4)\par
+            callobj(walls)\par
+            lmbind(MATERIAL, 5)\par
+            pushmatrix()\par
+            translate(-4.5,4.5,3.0)\par
+            scale(0.2,0.2,9.0)\par
+            rotate(450,'z')\par
+            callobj(pillar)\par
+            popmatrix()\par
+            callobj(railing)\par
+            lmbind(MATERIAL, 6)\par
+            pushmatrix()\par
+            translate(0.0, -0.01, 0.0)\par
+            callobj(doors)\par
+            popmatrix()\par
+            if mousing == MOUSE2 or err:\par
+                cpack(0xff0000)\par
+                cmov(0.0, 0.0, 0.4)\par
+                charstr('t='+`t`)\par
+            if mousing == MOUSE2:\par
+                cpack(0xff0000)\par
+                cmov(0.0, 0.0, 0.2)\par
+                charstr('delta-t='+`step`)\par
+            if err:\par
+                cpack(0xff00)\par
+                cmov(0.0, 0.0, 0.2)\par
+                print err\par
+                charstr(err)\par
+                pausing = 1\par
+            if pausing:\par
+                cpack(0xff00)\par
+                cmov(0.0, 0.0, 0.0)\par
+                charstr('Pausing, type P to continue')\par
+            swapbuffers()\par
+            if pausing:\par
+                while 1:\par
+                    dv=qread()\par
+                    if dv==(PKEY,1):\par
+                        break\par
+                    if dv==(ESCKEY,1):\par
+                        sys.exit(0)\par
+                pausing = 0\par
+#\par
+try:\par
+    main()\par
+except KeyboardInterrupt:\par
+    sys.exit(1)\par
+\par
+\par
+}
+ 

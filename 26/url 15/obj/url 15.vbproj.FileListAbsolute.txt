@@ -1,0 +1,20 @@
+C:\Users\acer\Desktop\çalışmam(okul)\url 15\obj\Debug\url 15.exe
+C:\Users\acer\Desktop\çalışmam(okul)\url 15\obj\Debug\url 15.xml
+C:\Users\acer\Desktop\çalışmam(okul)\url 15\obj\Debug\url 15.pdb
+C:\Users\acer\Desktop\çalışmam(okul)\url 15\bin\Debug\url 15.exe
+C:\Users\acer\Desktop\çalışmam(okul)\url 15\bin\Debug\url 15.pdb
+C:\Users\acer\Desktop\çalışmam(okul)\url 15\bin\Debug\url 15.xml
+C:\Users\acer\Desktop\çalışmam(okul)\url 15\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\acer\Desktop\çalışmam(okul)\url 15\obj\Debug\url_15.Form1.resources
+C:\Users\acer\Desktop\çalışmam(okul)\url 15\obj\Debug\url_15.Resources.resources
+C:\Users\acer\Desktop\çalışmam(okul)\url 15\obj\Debug\url 15.vbproj.GenerateResource.Cache
+C:\Users\acer\Desktop\26(yeni)\26\url 15\obj\Debug\url 15.exe
+C:\Users\acer\Desktop\26(yeni)\26\url 15\obj\Debug\url 15.xml
+C:\Users\acer\Desktop\26(yeni)\26\url 15\obj\Debug\url 15.pdb
+C:\Users\acer\Desktop\26(yeni)\26\url 15\bin\Debug\url 15.exe
+C:\Users\acer\Desktop\26(yeni)\26\url 15\bin\Debug\url 15.pdb
+C:\Users\acer\Desktop\26(yeni)\26\url 15\bin\Debug\url 15.xml
+C:\Users\acer\Desktop\26(yeni)\26\url 15\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\acer\Desktop\26(yeni)\26\url 15\obj\Debug\url_15.Form1.resources
+C:\Users\acer\Desktop\26(yeni)\26\url 15\obj\Debug\url_15.Resources.resources
+C:\Users\acer\Desktop\26(yeni)\26\url 15\obj\Debug\url 15.vbproj.GenerateResource.Cache

@@ -1,0 +1,334 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset162 Microsoft Sans Serif;}}
+\viewkind4\uc1\pard\lang1055\f0\fs17\par
+# Tools for info file processing.\par
+\par
+# XXX Need to be more careful with reading ahead searching for nodes.\par
+\par
+\par
+import regexp\par
+import string\par
+\par
+\par
+# Exported exceptions.\par
+#\par
+NoSuchFile = 'no such file'\par
+NoSuchNode = 'no such node'\par
+\par
+\par
+# The search path for info files; this is site-specific.\par
+# Directory names should end in a partname delimiter,\par
+# so they can simply be concatenated to a relative pathname.\par
+#\par
+#INFOPATH = ['', ':Info.Ibrowse:', ':Info:']\tab # Mac\par
+INFOPATH = ['', '/usr/local/emacs/info/']\tab # X11 on UNIX\par
+\par
+\par
+# Tunable constants.\par
+#\par
+BLOCKSIZE = 512\tab\tab\tab # Qty to align reads to, if possible\par
+FUZZ = 2*BLOCKSIZE\tab\tab # Qty to back-up before searching for a node\par
+CHUNKSIZE = 4*BLOCKSIZE\tab\tab # Qty to read at once when reading lots of data\par
+\par
+\par
+# Regular expressions used.\par
+# Note that it is essential that Python leaves unrecognized backslash\par
+# escapes in a string so they can be seen by regexp.compile!\par
+#\par
+findheader = regexp.compile('\\037\\014?\\n(.*\\n)').match\par
+findescape = regexp.compile('\\037').match\par
+parseheader = regexp.compile('[nN]ode:[ \\t]*([^\\t,\\n]*)').match\par
+findfirstline = regexp.compile('^.*\\n').match\par
+findnode = regexp.compile('[nN]ode:[ \\t]*([^\\t,\\n]*)').match\par
+findprev = regexp.compile('[pP]rev[ious]*:[ \\t]*([^\\t,\\n]*)').match\par
+findnext = regexp.compile('[nN]ext:[ \\t]*([^\\t,\\n]*)').match\par
+findup = regexp.compile('[uU]p:[ \\t]*([^\\t,\\n]*)').match\par
+findmenu = regexp.compile('^\\* [mM]enu:').match\par
+findmenuitem = regexp.compile( \\\par
+\tab '^\\* ([^:]+):[ \\t]*(:|\\([^\\t]*\\)[^\\t,\\n.]*|[^:(][^\\t,\\n.]*)').match\par
+findfootnote = regexp.compile( \\\par
+\tab '\\*[nN]ote ([^:]+):[ \\t]*(:|[^:][^\\t,\\n.]*)').match\par
+parsenoderef = regexp.compile('^\\((.*)\\)(.*)$').match\par
+\par
+\par
+# Get a node and all information pertaining to it.\par
+# This doesn't work if there is an indirect tag table,\par
+# and in general you are better off using icache.get_node() instead.\par
+# Functions get_whole_file() and get_file_node() provide part\par
+# functionality used by icache.\par
+# Raise NoSuchFile or NoSuchNode as appropriate.\par
+#\par
+def get_node(curfile, ref):\par
+\tab file, node = parse_ref(curfile, ref)\par
+\tab if node == '*':\par
+\tab\tab return get_whole_file(file)\par
+\tab else:\par
+\tab\tab return get_file_node(file, 0, node)\par
+#\par
+def get_whole_file(file):\par
+\tab f = try_open(file) # May raise NoSuchFile\par
+\tab text = f.read()\par
+\tab header, menu, footnotes = ('', '', ''), [], []\par
+\tab return file, '*', header, menu, footnotes, text\par
+#\par
+def get_file_node(file, offset, node):\par
+\tab f = try_open(file) # May raise NoSuchFile\par
+\tab text = find_node(f, offset, node) # May raise NoSuchNode\par
+\tab node, header, menu, footnotes = analyze_node(text)\par
+\tab return file, node, header, menu, footnotes, text\par
+\par
+\par
+# Parse a node reference into a file (possibly default) and node name.\par
+# Possible reference formats are: "NODE", "(FILE)", "(FILE)NODE".\par
+# Default file is the curfile argument; default node is Top.\par
+# A node value of '*' is a special case: the whole file should\par
+# be interpreted (by the caller!) as a single node.\par
+#\par
+def parse_ref(curfile, ref):\par
+\tab match = parsenoderef(ref)\par
+\tab if not match:\par
+\tab\tab file, node = curfile, ref\par
+\tab else:\par
+\tab\tab (a, b), (a1, b1), (a2, b2) = match\par
+\tab\tab file, node = ref[a1:b1], ref[a2:b2]\par
+\tab if not file:\par
+\tab\tab file = curfile # (Is this necessary?)\par
+\tab if not node:\par
+\tab\tab node = 'Top'\par
+\tab return file, node\par
+\par
+\par
+# Extract node name, links, menu and footnotes from the node text.\par
+#\par
+def analyze_node(text):\par
+\tab #\par
+\tab # Get node name and links from the header line\par
+\tab #\par
+\tab match = findfirstline(text)\par
+\tab if match:\par
+\tab\tab (a, b) = match[0]\par
+\tab\tab line = text[a:b]\par
+\tab else:\par
+\tab\tab line = ''\par
+\tab node = get_it(text, findnode)\par
+\tab prev = get_it(text, findprev)\par
+\tab next = get_it(text, findnext)\par
+\tab up = get_it(text, findup)\par
+\tab #\par
+\tab # Get the menu items, if there is a menu\par
+\tab #\par
+\tab menu = []\par
+\tab match = findmenu(text)\par
+\tab if match:\par
+\tab\tab (a, b) = match[0]\par
+\tab\tab while 1:\par
+\tab\tab\tab match = findmenuitem(text, b)\par
+\tab\tab\tab if not match:\par
+\tab\tab\tab\tab break\par
+\tab\tab\tab (a, b), (a1, b1), (a2, b2) = match\par
+\tab\tab\tab topic, ref = text[a1:b1], text[a2:b2]\par
+\tab\tab\tab if ref == ':':\par
+\tab\tab\tab\tab ref = topic\par
+\tab\tab\tab menu.append((topic, ref))\par
+\tab #\par
+\tab # Get the footnotes\par
+\tab #\par
+\tab footnotes = []\par
+\tab b = 0\par
+\tab while 1:\par
+\tab\tab match = findfootnote(text, b)\par
+\tab\tab if not match:\par
+\tab\tab\tab break\par
+\tab\tab (a, b), (a1, b1), (a2, b2) = match\par
+\tab\tab topic, ref = text[a1:b1], text[a2:b2]\par
+\tab\tab if ref == ':':\par
+\tab\tab\tab ref = topic\par
+\tab\tab footnotes.append((topic, ref))\par
+\tab #\par
+\tab return node, (prev, next, up), menu, footnotes\par
+#\par
+def get_it(line, matcher):\par
+\tab match = matcher(line)\par
+\tab if not match:\par
+\tab\tab return ''\par
+\tab else:\par
+\tab\tab (a, b), (a1, b1) = match\par
+\tab\tab return line[a1:b1]\par
+\par
+\par
+# Find a node in an open file.\par
+# The offset (from the tags table) is a hint about the node's position.\par
+# Pass zero if there is no tags table.\par
+# Raise NoSuchNode if the node isn't found.\par
+# NB: This seeks around in the file.\par
+#\par
+def find_node(f, offset, node):\par
+\tab node = string.lower(node) # Just to be sure\par
+\tab #\par
+\tab # Position a little before the given offset,\par
+\tab # so we may find the node even if it has moved around\par
+\tab # in the file a little.\par
+\tab #\par
+\tab offset = max(0, ((offset-FUZZ) / BLOCKSIZE) * BLOCKSIZE)\par
+\tab f.seek(offset)\par
+\tab #\par
+\tab # Loop, hunting for a matching node header.\par
+\tab #\par
+\tab while 1:\par
+\tab\tab buf = f.read(CHUNKSIZE)\par
+\tab\tab if not buf:\par
+\tab\tab\tab break\par
+\tab\tab i = 0\par
+\tab\tab while 1:\par
+\tab\tab\tab match = findheader(buf, i)\par
+\tab\tab\tab if match:\par
+\tab\tab\tab\tab (a,b), (a1,b1) = match\par
+\tab\tab\tab\tab start = a1\par
+\tab\tab\tab\tab line = buf[a1:b1]\par
+\tab\tab\tab\tab i = b\par
+\tab\tab\tab\tab match = parseheader(line)\par
+\tab\tab\tab\tab if match:\par
+\tab\tab\tab\tab\tab (a,b), (a1,b1) = match\par
+\tab\tab\tab\tab\tab key = string.lower(line[a1:b1])\par
+\tab\tab\tab\tab\tab if key == node:\par
+\tab\tab\tab\tab\tab\tab # Got it!  Now read the rest.\par
+\tab\tab\tab\tab\tab\tab return read_node(f, buf[start:])\par
+\tab\tab\tab elif findescape(buf, i):\par
+\tab\tab\tab\tab next = f.read(CHUNKSIZE)\par
+\tab\tab\tab\tab if not next:\par
+\tab\tab\tab\tab\tab break\par
+\tab\tab\tab\tab buf = buf + next\par
+\tab\tab\tab else:\par
+\tab\tab\tab\tab break\par
+\tab #\par
+\tab # If we get here, we didn't find it.  Too bad.\par
+\tab #\par
+\tab raise NoSuchNode, node\par
+\par
+\par
+# Finish off getting a node (subroutine for find_node()).\par
+# The node begins at the start of buf and may end in buf;\par
+# if it doesn't end there, read additional data from f.\par
+#\par
+def read_node(f, buf):\par
+\tab i = 0\par
+\tab match = findescape(buf, i)\par
+\tab while not match:\par
+\tab\tab next = f.read(CHUNKSIZE)\par
+\tab\tab if not next:\par
+\tab\tab\tab end = len(buf)\par
+\tab\tab\tab break\par
+\tab\tab i = len(buf)\par
+\tab\tab buf = buf + next\par
+\tab\tab match = findescape(buf, i)\par
+\tab else:\par
+\tab\tab # Got a match\par
+\tab\tab (a, b) = match[0]\par
+\tab\tab end = a\par
+\tab # Strip trailing newlines\par
+\tab while end > 0 and buf[end-1] == '\\n':\par
+\tab\tab end = end-1\par
+\tab buf = buf[:end]\par
+\tab return buf\par
+\par
+\par
+# Read reverse starting at offset until the beginning of a node is found.\par
+# Then return a buffer containing the beginning of the node,\par
+# with f positioned just after the buffer.\par
+# The buffer will contain at least the full header line of the node;\par
+# the caller should finish off with read_node() if it is the right node.\par
+# (It is also possible that the buffer extends beyond the node!)\par
+# Return an empty string if there is no node before the given offset.\par
+#\par
+def backup_node(f, offset):\par
+\tab start = max(0, ((offset-CHUNKSIZE) / BLOCKSIZE) * BLOCKSIZE)\par
+\tab end = offset\par
+\tab while start < end:\par
+\tab\tab f.seek(start)\par
+\tab\tab buf = f.read(end-start)\par
+\tab\tab i = 0\par
+\tab\tab hit = -1\par
+\tab\tab while 1:\par
+\tab\tab\tab match = findheader(buf, i)\par
+\tab\tab\tab if match:\par
+\tab\tab\tab\tab (a,b), (a1,b1) = match\par
+\tab\tab\tab\tab hit = a1\par
+\tab\tab\tab\tab i = b\par
+\tab\tab\tab elif end < offset and findescape(buf, i):\par
+\tab\tab\tab\tab next = f.read(min(offset-end, BLOCKSIZE))\par
+\tab\tab\tab\tab if not next:\par
+\tab\tab\tab\tab\tab break\par
+\tab\tab\tab\tab buf = buf + next\par
+\tab\tab\tab\tab end = end + len(next)\par
+\tab\tab\tab else:\par
+\tab\tab\tab\tab break\par
+\tab\tab if hit >= 0:\par
+\tab\tab\tab return buf[hit:]\par
+\tab\tab end = start\par
+\tab\tab start = max(0, end - CHUNKSIZE)\par
+\tab return ''\par
+\par
+\par
+# Make a tag table for the given file by scanning the file.\par
+# The file must be open for reading, and positioned at the beginning\par
+# (or wherever the hunt for tags must begin; it is read till the end).\par
+#\par
+def make_tags(f):\par
+\tab tags = \{\}\par
+\tab while 1:\par
+\tab\tab offset = f.tell()\par
+\tab\tab buf = f.read(CHUNKSIZE)\par
+\tab\tab if not buf:\par
+\tab\tab\tab break\par
+\tab\tab i = 0\par
+\tab\tab while 1:\par
+\tab\tab\tab match = findheader(buf, i)\par
+\tab\tab\tab if match:\par
+\tab\tab\tab\tab (a,b), (a1,b1) = match\par
+\tab\tab\tab\tab start = offset+a1\par
+\tab\tab\tab\tab line = buf[a1:b1]\par
+\tab\tab\tab\tab i = b\par
+\tab\tab\tab\tab match = parseheader(line)\par
+\tab\tab\tab\tab if match:\par
+\tab\tab\tab\tab\tab (a,b), (a1,b1) = match\par
+\tab\tab\tab\tab\tab key = string.lower(line[a1:b1])\par
+\tab\tab\tab\tab\tab if tags.has_key(key):\par
+\tab\tab\tab\tab\tab\tab print 'Duplicate node:',\par
+\tab\tab\tab\tab\tab\tab print key\par
+\tab\tab\tab\tab\tab tags[key] = '', start, line\par
+\tab\tab\tab elif findescape(buf, i):\par
+\tab\tab\tab\tab next = f.read(CHUNKSIZE)\par
+\tab\tab\tab\tab if not next:\par
+\tab\tab\tab\tab\tab break\par
+\tab\tab\tab\tab buf = buf + next\par
+\tab\tab\tab else:\par
+\tab\tab\tab\tab break\par
+\tab return tags\par
+\par
+\par
+# Try to open a file, return a file object if succeeds.\par
+# Raise NoSuchFile if the file can't be opened.\par
+# Should treat absolute pathnames special.\par
+#\par
+def try_open(file):\par
+\tab for dir in INFOPATH:\par
+\tab\tab try:\par
+\tab\tab\tab return open(dir + file, 'r')\par
+\tab\tab except IOError:\par
+\tab\tab\tab pass\par
+\tab raise NoSuchFile, file\par
+\par
+\par
+# A little test for the speed of make_tags().\par
+#\par
+TESTFILE = 'texinfo-1'\par
+def test_make_tags():\par
+\tab import time\par
+\tab f = try_open(TESTFILE)\par
+\tab t1 = time.time()\par
+\tab tags = make_tags(f)\par
+\tab t2 = time.time()\par
+\tab print 'Making tag table for', `TESTFILE`, 'took', t2-t1, 'sec.'\par
+\par
+\par
+}
+ 

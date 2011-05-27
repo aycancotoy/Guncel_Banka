@@ -1,0 +1,291 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0\fnil\fcharset162 Microsoft Sans Serif;}}
+\viewkind4\uc1\pard\lang1055\f0\fs17\par
+#! /usr/bin/env python\par
+\par
+# Scan MH folder, display results in window\par
+\par
+import os\par
+import sys\par
+import regex\par
+import getopt\par
+import string\par
+import mhlib\par
+\par
+from Tkinter import *\par
+\par
+from dialog import dialog\par
+\par
+mailbox = os.environ['HOME'] + '/Mail'\par
+\par
+def main():\par
+\tab global root, tk, top, mid, bot\par
+\tab global folderbox, foldermenu, scanbox, scanmenu, viewer\par
+\tab global folder, seq\par
+\tab global mh, mhf\par
+\par
+\tab # Parse command line options\par
+\par
+\tab folder = 'inbox'\par
+\tab seq = 'all'\par
+\tab try:\par
+\tab\tab opts, args = getopt.getopt(sys.argv[1:], '')\par
+\tab except getopt.error, msg:\par
+\tab\tab print msg\par
+\tab\tab sys.exit(2)\par
+\tab for arg in args:\par
+\tab\tab if arg[:1] == '+':\par
+\tab\tab\tab folder = arg[1:]\par
+\tab\tab else:\par
+\tab\tab\tab seq = arg\par
+\par
+\tab # Initialize MH\par
+\par
+\tab mh = mhlib.MH()\par
+\tab mhf = mh.openfolder(folder)\par
+\par
+\tab # Build widget hierarchy\par
+\par
+\tab root = Tk()\par
+\tab tk = root.tk\par
+\par
+\tab top = Frame(root)\par
+\tab top.pack(\{'expand': 1, 'fill': 'both'\})\par
+\par
+\tab # Build right part: folder list\par
+\par
+\tab right = Frame(top)\par
+\tab right.pack(\{'fill': 'y', 'side': 'right'\})\par
+\par
+\tab folderbar = Scrollbar(right, \{'relief': 'sunken', 'bd': 2\})\par
+\tab folderbar.pack(\{'fill': 'y', 'side': 'right'\})\par
+\par
+\tab folderbox = Listbox(right, \{'exportselection': 0\})\par
+\tab folderbox.pack(\{'expand': 1, 'fill': 'both', 'side': 'left'\})\par
+\par
+\tab foldermenu = Menu(root)\par
+\tab foldermenu.add('command',\par
+\tab\tab        \{'label': 'Open Folder',\par
+\tab\tab\tab 'command': open_folder\})\par
+\tab foldermenu.add('separator')\par
+\tab foldermenu.add('command',\par
+\tab\tab        \{'label': 'Quit',\par
+\tab\tab\tab 'command': 'exit'\})\par
+\tab foldermenu.bind('<ButtonRelease-3>', folder_unpost)\par
+\par
+\tab folderbox['yscrollcommand'] = (folderbar, 'set')\par
+\tab folderbar['command'] = (folderbox, 'yview')\par
+\tab folderbox.bind('<Double-1>', open_folder, 1)\par
+\tab folderbox.bind('<3>', folder_post)\par
+\par
+\tab # Build left part: scan list\par
+\par
+\tab left = Frame(top)\par
+\tab left.pack(\{'expand': 1, 'fill': 'both', 'side': 'left'\})\par
+\par
+\tab scanbar = Scrollbar(left, \{'relief': 'sunken', 'bd': 2\})\par
+\tab scanbar.pack(\{'fill': 'y', 'side': 'right'\})\par
+\par
+\tab scanbox = Listbox(left, \{'font': 'fixed'\})\par
+\tab scanbox.pack(\{'expand': 1, 'fill': 'both', 'side': 'left'\})\par
+\par
+\tab scanmenu = Menu(root)\par
+\tab scanmenu.add('command',\par
+\tab\tab      \{'label': 'Open Message',\par
+\tab\tab       'command': open_message\})\par
+\tab scanmenu.add('command',\par
+\tab\tab      \{'label': 'Remove Message',\par
+\tab\tab       'command': remove_message\})\par
+\tab scanmenu.add('command',\par
+\tab\tab      \{'label': 'Refile Message',\par
+\tab\tab       'command': refile_message\})\par
+\tab scanmenu.add('separator')\par
+\tab scanmenu.add('command',\par
+\tab\tab      \{'label': 'Quit',\par
+\tab\tab       'command': 'exit'\})\par
+\tab scanmenu.bind('<ButtonRelease-3>', scan_unpost)\par
+\par
+\tab scanbox['yscrollcommand'] = (scanbar, 'set')\par
+\tab scanbar['command'] = (scanbox, 'yview')\par
+\tab scanbox.bind('<Double-1>', open_message)\par
+\tab scanbox.bind('<3>', scan_post)\par
+\par
+\tab # Separator between middle and bottom part\par
+\par
+\tab rule2 = Frame(root, \{'bg': 'black'\})\par
+\tab rule2.pack(\{'fill': 'x'\})\par
+\par
+\tab # Build bottom part: current message\par
+\par
+\tab bot = Frame(root)\par
+\tab bot.pack(\{'expand': 1, 'fill': 'both'\})\par
+\tab #\par
+\tab viewer = None\par
+\par
+\tab # Window manager commands\par
+\par
+\tab root.minsize(800, 1) # Make window resizable\par
+\par
+\tab # Fill folderbox with text\par
+\par
+\tab setfolders()\par
+\par
+\tab # Fill scanbox with text\par
+\par
+\tab rescan()\par
+\par
+\tab # Enter mainloop\par
+\par
+\tab root.mainloop()\par
+\par
+def folder_post(e):\par
+\tab x, y = e.x_root, e.y_root\par
+\tab foldermenu.post(x - 10, y - 10)\par
+\tab foldermenu.grab_set()\par
+\par
+def folder_unpost(e):\par
+\tab tk.call('update', 'idletasks')\par
+\tab foldermenu.grab_release()\par
+\tab foldermenu.unpost()\par
+\tab foldermenu.invoke('active')\par
+\par
+def scan_post(e):\par
+\tab x, y = e.x_root, e.y_root\par
+\tab scanmenu.post(x - 10, y - 10)\par
+\tab scanmenu.grab_set()\par
+\par
+def scan_unpost(e):\par
+\tab tk.call('update', 'idletasks')\par
+\tab scanmenu.grab_release()\par
+\tab scanmenu.unpost()\par
+\tab scanmenu.invoke('active')\par
+\par
+scanparser = regex.compile('^ *\\([0-9]+\\)')\par
+\par
+def open_folder(e=None):\par
+\tab global folder, mhf\par
+\tab sel = folderbox.curselection()\par
+\tab if len(sel) != 1:\par
+\tab\tab if len(sel) > 1:\par
+\tab\tab\tab msg = "Please open one folder at a time"\par
+\tab\tab else:\par
+\tab\tab\tab msg = "Please select a folder to open"\par
+\tab\tab dialog(root, "Can't Open Folder", msg, "", 0, "OK")\par
+\tab\tab return\par
+\tab i = sel[0]\par
+\tab folder = folderbox.get(i)\par
+\tab mhf = mh.openfolder(folder)\par
+\tab rescan()\par
+\par
+def open_message(e=None):\par
+\tab global viewer\par
+\tab sel = scanbox.curselection()\par
+\tab if len(sel) != 1:\par
+\tab\tab if len(sel) > 1:\par
+\tab\tab\tab msg = "Please open one message at a time"\par
+\tab\tab else:\par
+\tab\tab\tab msg = "Please select a message to open"\par
+\tab\tab dialog(root, "Can't Open Message", msg, "", 0, "OK")\par
+\tab\tab return\par
+\tab cursor = scanbox['cursor']\par
+\tab scanbox['cursor'] = 'watch'\par
+\tab tk.call('update', 'idletasks')\par
+\tab i = sel[0]\par
+\tab line = scanbox.get(i)\par
+\tab if scanparser.match(line) >= 0:\par
+\tab\tab num = string.atoi(scanparser.group(1))\par
+\tab\tab m = mhf.openmessage(num)\par
+\tab\tab if viewer: viewer.destroy()\par
+\tab\tab from MimeViewer import MimeViewer\par
+\tab\tab viewer = MimeViewer(bot, '+%s/%d' % (folder, num), m)\par
+\tab\tab viewer.pack()\par
+\tab\tab viewer.show()\par
+\tab scanbox['cursor'] = cursor\par
+\par
+def interestingheader(header):\par
+\tab return header != 'received'\par
+\par
+def remove_message(e=None):\par
+\tab itop = scanbox.nearest(0)\par
+\tab sel = scanbox.curselection()\par
+\tab if not sel:\par
+\tab\tab dialog(root, "No Message To Remove",\par
+\tab\tab        "Please select a message to remove", "", 0, "OK")\par
+\tab\tab return\par
+\tab todo = []\par
+\tab for i in sel:\par
+\tab\tab line = scanbox.get(i)\par
+\tab\tab if scanparser.match(line) >= 0:\par
+\tab\tab\tab todo.append(string.atoi(scanparser.group(1)))\par
+\tab mhf.removemessages(todo)\par
+\tab rescan()\par
+\tab fixfocus(min(todo), itop)\par
+\par
+lastrefile = ''\par
+tofolder = None\par
+def refile_message(e=None):\par
+\tab global lastrefile, tofolder\par
+\tab itop = scanbox.nearest(0)\par
+\tab sel = scanbox.curselection()\par
+\tab if not sel:\par
+\tab\tab dialog(root, "No Message To Refile",\par
+\tab\tab        "Please select a message to refile", "", 0, "OK")\par
+\tab\tab return\par
+\tab foldersel = folderbox.curselection()\par
+\tab if len(foldersel) != 1:\par
+\tab\tab if not foldersel:\par
+\tab\tab\tab msg = "Please select a folder to refile to"\par
+\tab\tab else:\par
+\tab\tab\tab msg = "Please select exactly one folder to refile to"\par
+\tab\tab dialog(root, "No Folder To Refile", msg, "", 0, "OK")\par
+\tab\tab return\par
+\tab refileto = folderbox.get(foldersel[0])\par
+\tab todo = []\par
+\tab for i in sel:\par
+\tab\tab line = scanbox.get(i)\par
+\tab\tab if scanparser.match(line) >= 0:\par
+\tab\tab\tab todo.append(string.atoi(scanparser.group(1)))\par
+\tab if lastrefile != refileto or not tofolder:\par
+\tab\tab lastrefile = refileto\par
+\tab\tab tofolder = None\par
+\tab\tab tofolder = mh.openfolder(lastrefile)\par
+\tab mhf.refilemessages(todo, tofolder)\par
+\tab rescan()\par
+\tab fixfocus(min(todo), itop)\par
+\par
+def fixfocus(near, itop):\par
+\tab n = scanbox.size()\par
+\tab for i in range(n):\par
+\tab\tab line = scanbox.get(`i`)\par
+\tab\tab if scanparser.match(line) >= 0:\par
+\tab\tab\tab num = string.atoi(scanparser.group(1))\par
+\tab\tab\tab if num >= near:\par
+\tab\tab\tab\tab break\par
+\tab else:\par
+\tab\tab i = 'end'\par
+\tab scanbox.select_from(i)\par
+\tab scanbox.yview(itop)\par
+\par
+def setfolders():\par
+\tab folderbox.delete(0, 'end')\par
+\tab for fn in mh.listallfolders():\par
+\tab\tab folderbox.insert('end', fn)\par
+\par
+def rescan():\par
+\tab global viewer\par
+\tab if viewer:\par
+\tab\tab viewer.destroy()\par
+\tab\tab viewer = None\par
+\tab scanbox.delete(0, 'end')\par
+\tab for line in scanfolder(folder, seq):\par
+\tab\tab scanbox.insert('end', line)\par
+\par
+def scanfolder(folder = 'inbox', sequence = 'all'):\par
+\tab return map(\par
+\tab\tab lambda line: line[:-1],\par
+\tab\tab os.popen('scan +%s %s' % (folder, sequence), 'r').readlines())\par
+\par
+main()\par
+\par
+\par
+}
+ 

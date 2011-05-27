@@ -1,0 +1,125 @@
+C:\Users\acer\Documents\Visual Studio 2005\Projects\SINAV 2.dönem\çalışmam\bin\Debug\çalışmam.exe.config
+C:\Users\acer\Documents\Visual Studio 2005\Projects\SINAV 2.dönem\çalışmam\bin\Debug\çalışmam.exe
+C:\Users\acer\Documents\Visual Studio 2005\Projects\SINAV 2.dönem\çalışmam\bin\Debug\çalışmam.pdb
+C:\Users\acer\Documents\Visual Studio 2005\Projects\SINAV 2.dönem\çalışmam\bin\Debug\çalışmam.xml
+C:\Users\acer\Documents\Visual Studio 2005\Projects\SINAV 2.dönem\çalışmam\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\acer\Documents\Visual Studio 2005\Projects\SINAV 2.dönem\çalışmam\obj\Debug\WindowsApplication4.Form1.resources
+C:\Users\acer\Documents\Visual Studio 2005\Projects\SINAV 2.dönem\çalışmam\obj\Debug\WindowsApplication4.Form2.resources
+C:\Users\acer\Documents\Visual Studio 2005\Projects\SINAV 2.dönem\çalışmam\obj\Debug\WindowsApplication4.Resources.resources
+C:\Users\acer\Documents\Visual Studio 2005\Projects\SINAV 2.dönem\çalışmam\obj\Debug\çalışmam.vbproj.GenerateResource.Cache
+C:\Users\acer\Documents\Visual Studio 2005\Projects\SINAV 2.dönem\çalışmam\obj\Debug\çalışmam.exe
+C:\Users\acer\Documents\Visual Studio 2005\Projects\SINAV 2.dönem\çalışmam\obj\Debug\çalışmam.xml
+C:\Users\acer\Documents\Visual Studio 2005\Projects\SINAV 2.dönem\çalışmam\obj\Debug\çalışmam.pdb
+F:\çalışmam\bin\Debug\çalışmam.exe.config
+F:\çalışmam\obj\Debug\çalışmam.exe
+F:\çalışmam\obj\Debug\çalışmam.xml
+F:\çalışmam\obj\Debug\çalışmam.pdb
+F:\çalışmam\bin\Debug\çalışmam.exe
+F:\çalışmam\bin\Debug\çalışmam.pdb
+F:\çalışmam\bin\Debug\çalışmam.xml
+F:\çalışmam\obj\Debug\ResolveAssemblyReference.cache
+F:\çalışmam\obj\Debug\WindowsApplication4.Form1.resources
+F:\çalışmam\obj\Debug\WindowsApplication4.Form2.resources
+F:\çalışmam\obj\Debug\WindowsApplication4.Resources.resources
+F:\çalışmam\obj\Debug\çalışmam.vbproj.GenerateResource.Cache
+D:\çalışmam\bin\Debug\çalışmam.exe.config
+D:\çalışmam\obj\Debug\çalışmam.exe
+D:\çalışmam\obj\Debug\çalışmam.xml
+D:\çalışmam\obj\Debug\çalışmam.pdb
+D:\çalışmam\bin\Debug\çalışmam.exe
+D:\çalışmam\bin\Debug\çalışmam.pdb
+D:\çalışmam\bin\Debug\çalışmam.xml
+D:\çalışmam\obj\Debug\ResolveAssemblyReference.cache
+D:\çalışmam\obj\Debug\WindowsApplication4.Form1.resources
+D:\çalışmam\obj\Debug\WindowsApplication4.Form2.resources
+D:\çalışmam\obj\Debug\WindowsApplication4.Resources.resources
+D:\çalışmam\obj\Debug\çalışmam.vbproj.GenerateResource.Cache
+C:\Users\acer\Desktop\çalışmam\bin\Debug\çalışmam.exe.config
+C:\Users\acer\Desktop\çalışmam\obj\Debug\çalışmam.exe
+C:\Users\acer\Desktop\çalışmam\obj\Debug\çalışmam.xml
+C:\Users\acer\Desktop\çalışmam\obj\Debug\çalışmam.pdb
+C:\Users\acer\Desktop\çalışmam\bin\Debug\çalışmam.exe
+C:\Users\acer\Desktop\çalışmam\bin\Debug\çalışmam.pdb
+C:\Users\acer\Desktop\çalışmam\bin\Debug\çalışmam.xml
+C:\Users\acer\Desktop\çalışmam\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\acer\Desktop\çalışmam\obj\Debug\WindowsApplication4.Form1.resources
+C:\Users\acer\Desktop\çalışmam\obj\Debug\WindowsApplication4.Form2.resources
+C:\Users\acer\Desktop\çalışmam\obj\Debug\WindowsApplication4.Resources.resources
+C:\Users\acer\Desktop\çalışmam\obj\Debug\çalışmam.vbproj.GenerateResource.Cache
+C:\Users\acer\Desktop\çalışmam(okul)\bin\Debug\çalışmam.exe.config
+C:\Users\acer\Desktop\çalışmam(okul)\obj\Debug\çalışmam.exe
+C:\Users\acer\Desktop\çalışmam(okul)\obj\Debug\çalışmam.xml
+C:\Users\acer\Desktop\çalışmam(okul)\obj\Debug\çalışmam.pdb
+C:\Users\acer\Desktop\çalışmam(okul)\bin\Debug\çalışmam.exe
+C:\Users\acer\Desktop\çalışmam(okul)\bin\Debug\çalışmam.pdb
+C:\Users\acer\Desktop\çalışmam(okul)\bin\Debug\çalışmam.xml
+C:\Users\acer\Desktop\çalışmam(okul)\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\acer\Desktop\çalışmam(okul)\obj\Debug\WindowsApplication4.Form1.resources
+C:\Users\acer\Desktop\çalışmam(okul)\obj\Debug\WindowsApplication4.Form2.resources
+C:\Users\acer\Desktop\çalışmam(okul)\obj\Debug\WindowsApplication4.Resources.resources
+C:\Users\acer\Desktop\çalışmam(okul)\obj\Debug\çalışmam.vbproj.GenerateResource.Cache
+C:\Users\acer\Desktop\çalışmam(okul)\obj\Debug\WindowsApplication4.ekle.resources
+C:\Users\acer\Desktop\çalışmam(okul)\obj\Debug\WindowsApplication4.goster.resources
+C:\Users\acer\Desktop\çalışmam(okul)\obj\Debug\WindowsApplication4.duzenle.resources
+C:\Users\acer\Desktop\çalışmam(okul)\obj\Debug\WindowsApplication4.sil.resources
+C:\Users\acer\Desktop\26(yeni)\26\bin\Debug\çalışmam.exe.config
+C:\Users\acer\Desktop\26(yeni)\26\obj\Debug\çalışmam.exe
+C:\Users\acer\Desktop\26(yeni)\26\obj\Debug\çalışmam.xml
+C:\Users\acer\Desktop\26(yeni)\26\obj\Debug\çalışmam.pdb
+C:\Users\acer\Desktop\26(yeni)\26\bin\Debug\çalışmam.exe
+C:\Users\acer\Desktop\26(yeni)\26\bin\Debug\çalışmam.pdb
+C:\Users\acer\Desktop\26(yeni)\26\bin\Debug\çalışmam.xml
+C:\Users\acer\Desktop\26(yeni)\26\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\acer\Desktop\26(yeni)\26\obj\Debug\WindowsApplication4.duzenle.resources
+C:\Users\acer\Desktop\26(yeni)\26\obj\Debug\WindowsApplication4.ekle.resources
+C:\Users\acer\Desktop\26(yeni)\26\obj\Debug\WindowsApplication4.Form1.resources
+C:\Users\acer\Desktop\26(yeni)\26\obj\Debug\WindowsApplication4.Form2.resources
+C:\Users\acer\Desktop\26(yeni)\26\obj\Debug\WindowsApplication4.goster.resources
+C:\Users\acer\Desktop\26(yeni)\26\obj\Debug\WindowsApplication4.Resources.resources
+C:\Users\acer\Desktop\26(yeni)\26\obj\Debug\WindowsApplication4.sil.resources
+C:\Users\acer\Desktop\26(yeni)\26\obj\Debug\çalışmam.vbproj.GenerateResource.Cache
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\bin\Debug\çalışmam.exe.config
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\obj\Debug\çalışmam.exe
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\obj\Debug\çalışmam.xml
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\obj\Debug\çalışmam.pdb
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\bin\Debug\çalışmam.exe
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\bin\Debug\çalışmam.pdb
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\bin\Debug\çalışmam.xml
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\obj\Debug\WindowsApplication4.duzenle.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\obj\Debug\WindowsApplication4.ekle.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\obj\Debug\WindowsApplication4.Form1.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\obj\Debug\WindowsApplication4.Form2.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\obj\Debug\WindowsApplication4.goster.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\obj\Debug\WindowsApplication4.Resources.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\obj\Debug\WindowsApplication4.sil.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt)\26\obj\Debug\çalışmam.vbproj.GenerateResource.Cache
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\bin\Debug\çalışmam.exe.config
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\obj\Debug\çalışmam.exe
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\obj\Debug\çalışmam.xml
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\obj\Debug\çalışmam.pdb
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\bin\Debug\çalışmam.exe
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\bin\Debug\çalışmam.pdb
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\bin\Debug\çalışmam.xml
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\obj\Debug\WindowsApplication4.duzenle.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\obj\Debug\WindowsApplication4.ekle.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\obj\Debug\WindowsApplication4.Form1.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\obj\Debug\WindowsApplication4.Form2.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\obj\Debug\WindowsApplication4.goster.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\obj\Debug\WindowsApplication4.Resources.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\obj\Debug\WindowsApplication4.sil.resources
+C:\Users\acer\Desktop\26(konhktnhıotmloıkt) - Kopya\26\obj\Debug\çalışmam.vbproj.GenerateResource.Cache
+C:\Users\acer\Desktop\26(son)\26\bin\Debug\çalışmam.exe.config
+C:\Users\acer\Desktop\26(son)\26\obj\Debug\çalışmam.exe
+C:\Users\acer\Desktop\26(son)\26\obj\Debug\çalışmam.xml
+C:\Users\acer\Desktop\26(son)\26\obj\Debug\çalışmam.pdb
+C:\Users\acer\Desktop\26(son)\26\bin\Debug\çalışmam.exe
+C:\Users\acer\Desktop\26(son)\26\bin\Debug\çalışmam.pdb
+C:\Users\acer\Desktop\26(son)\26\bin\Debug\çalışmam.xml
+C:\Users\acer\Desktop\26(son)\26\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\acer\Desktop\26(son)\26\obj\Debug\WindowsApplication4.Form1.resources
+C:\Users\acer\Desktop\26(son)\26\obj\Debug\WindowsApplication4.Form2.resources
+C:\Users\acer\Desktop\26(son)\26\obj\Debug\WindowsApplication4.Resources.resources
+C:\Users\acer\Desktop\26(son)\26\obj\Debug\çalışmam.vbproj.GenerateResource.Cache
+C:\Users\acer\Desktop\26(son)\26\obj\Debug\WindowsApplication4.tema_olusturucu.resources
